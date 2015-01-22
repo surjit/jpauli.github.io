@@ -1,6 +1,6 @@
 ---
 title: Welcome to Julien Pauli's page
-subtitle: My professionnal web life
+subtitle: My professional web life
 navigations: main
 ---
 

@@ -1,11 +1,9 @@
 <!DOCTYPE html>
-<!--[if lt IE 7]>      <html class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
-<!--[if IE 7]>         <html class="no-js lt-ie9 lt-ie8"> <![endif]-->
-<!--[if IE 8]>         <html class="no-js lt-ie9"> <![endif]-->
-<!--[if gt IE 8]><!--> <html class="no-js"> <!--<![endif]-->
+<html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <title>Reference mismatch in PHP function calls</title>
 
@@ -17,126 +15,93 @@
     <link rel="canonical" href="http://jpauli.github.io//2014/06/27/references-mismatch.html"/>
               <link rel="alternate" href="http://jpauli.github.io//feed/atom.xml" type="application/atom+xml" title="Julien Pauli PHP&#039;s life"/>
       
-        <link rel="stylesheet" href="../../../css/bootstrap.min.css"><link rel="stylesheet" href="../../../css/bootstrap-responsive.min.css"><link rel="stylesheet" href="../../../css/main.css"><link rel="stylesheet" href="http://yandex.st/highlightjs/7.3/styles/pojoaque.min.css">    
-    <script src="../../../js/vendor/modernizr-2.6.1-respond-1.1.0.min.js"></script>
-  </head>
+        <!-- Latest compiled and minified CSS --><link rel="stylesheet" href="../../../css/bootstrap.min.css"><link rel="stylesheet" href="../../../css/bootstrap-theme.min.css"><link rel="stylesheet" href="http://yandex.st/highlightjs/8.0/styles/pojoaque.min.css">      </head>
 
   <body>
-    <!--[if lt IE 7]>
-        <p class="chromeframe">You are using an outdated browser. <a href="http://browsehappy.com/">Upgrade your browser today</a> or <a href="http://www.google.com/chromeframe/?redirect=true">install Google Chrome Frame</a> to better experience this site.</p>
-    <![endif]-->
-
-    
-          <div class="navbar navbar-fixed-top">
-          <div class="navbar-inner">
-              <div class="container">
-                  <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
-                      <span class="icon-bar"></span>
-                      <span class="icon-bar"></span>
-                      <span class="icon-bar"></span>
-                  </a>
-                  <a class="brand" href="../../..">Julien Pauli PHP&#039;s life</a>
-                  <div class="nav-collapse collapse">
-                    <ul class="nav">
-                                                                                                            <li><a href="../../../index.html">Welcome to julien pauli&#039;s page</a></li>
-                                                            <li><a href="../../../about.html">About</a></li>
-                                                                                                </ul>
-                                      </div>
-              </div>
-          </div>
-      </div>
-    
-    
           <div class="container">
-
+                  <div class="page-header">
+            <ul class="list-inline pull-right">
+                                                <li>
+                    <a href="../../../about.html">
+                      About
+                    </a>
+                  </li>
+                                  <li>
+                    <a href="../../../index.html">
+                      Welcome to julien pauli&#039;s page
+                    </a>
+                  </li>
+                                          </ul>
+            <h1>
+              <a href="../../..">
+                Julien Pauli PHP&#039;s life
+              </a>
+            </h1>
+          </div>
         
-                  <div class="row">
-            <div class="span10 offset1 content">
-                                                <div class="page-header">
-                    <h1>Reference mismatch in PHP function calls</h1>
-                  </div>
-                              
-                <article>
-    <div class="pull-right date">
-      <i class="icon-calendar"></i>
+                  <div class="content">
+                                          <h1>
+                  Reference mismatch in PHP function calls</h1>
+                          
+              <article>
+    <p class="text-muted">
+      <span class="glyphicon glyphicon-calendar"></span>
       Jun 27th, 2014
-    </div>
+    </p>
 
     <div class="body">
       <h2 id="a-recall-on-references">A recall on references<a href="#a-recall-on-references" class="anchor">#</a></h2>
-
 <p>Once again, a coworker just pinged me about a huge memory usage in a Symfony2 based project.
 What is bad about Symfony2 ecosystem, is that people tend to use everyone else's code, because it
 seems to fit the <strong>usage</strong> need. This is not bad as-is, but wait, what about the performance of the piece of code you're gonna
 heavily use ? Nowadays we want fast things, treating much more data than 10 years ago. I think it's time for programmers
 who ignore performance to start learning about it.</p>
-
 <p>Tons of PHP programmers are very nice technical guys
 at creating functionnal code, and what they call "nice code", you know, with tons of objects and interfaces everywhere...
 Fine, right ! But when it comes to write critical parts of code, where performance
 trully matter, here suddenly, noone stays on the scene.
 This is simply because unfortunately, many people just ignore how PHP works, let me refresh your mind ;-)</p>
-
 <p>So, usually the main problem comes about memory usage. When I hear "my code is eating a gigabyte of
 memory" , I just wonder if it has been designed to solve a problem as huge as its memory impact, or what ?
 Seriously...</p>
-
 <p>Memory usage, in PHP code, is not really hard to understand. PHP uses a reference counting mechanism
 to track variable usages, just like any other language, or even the Kernel itself to manage lists of ... many things.
 Reference counting is a really really common basic computer programming trick to save memory.</p>
-
 <p>PHP is very well designed (I'm serious). It tries to do its best to save memory while running your code.
 But should you know how reference counting works, you should know there are some situations you should avoid.</p>
-
 <p>I'm gonna talk about reference mimatch in PHP function calls here.</p>
-
 <h2 id="what-to-do-or-not-to-do">What to do or not to do ?<a href="#what-to-do-or-not-to-do" class="anchor">#</a></h2>
-
 <p>What you should do is not use references (&amp;) , until you really master what you do.</p>
-
 <p>More seriously, you should absolutely avoid <strong>reference mismatch</strong> when calling functions.
 This is absolutely awfull for PHP, as any mismatch will make it duplicate the variable's memory.
 If the variable is big (a very long string, a very complex array), then you're gonna start feeling it.
 Worse, you're gonna complain against PHP, which has nothing to do with that. The problem is you, and the
 code you are using.</p>
-
 <h2 id="what-is-a-reference-mismatch">What is a reference mismatch ?<a href="#what-is-a-reference-mismatch" class="anchor">#</a></h2>
-
 <p>A reference mimatch is when you call a function whose argument is expected to be passed by reference, and
 you pass it a non-reference, or the opposite case.</p>
-
 <p>Here are few examples :</p>
-
 <pre><code>function foo($arg) { }
 
 $a = "some var";
 $b = &amp;$a; /* turn $a and $b into references */
 
 foo($a); /* Reference mismatch */
-foo($b); /* idem */
-</code></pre>
-
+foo($b); /* idem */</code></pre>
 <p>!</p>
-
 <pre><code>function foo(&amp;$arg) { } /* this function accepts an arg by reference */
 
 $a = "some var";
 $b = $a; /* increment $a refcount so that the content is bound to two different variables */
 
 foo($a); /* reference mismatch */
-foo($b); /* idem */
-</code></pre>
-
+foo($b); /* idem */</code></pre>
 <p>So those both examples are things you should avoid. PHP will duplicate the memory of the argument before
 passing it to the function (this is true for every argument).</p>
-
 <h2 id="what-about-the-objects">What about the objects ?<a href="#what-about-the-objects" class="anchor">#</a></h2>
-
 <p>Objects are a special case. Let me be really clear : PHP never, ever, ever, duplicates an object in memory
 until you explicitely tells it to do so. And you only have one way to tell it to do so : the <strong>clone</strong> keyword.</p>
-
 <p>This is really easy to demonstrate :</p>
-
 <pre><code>function wow($arg) { var_dump('in function wow : ', memory_get_usage()); }
 
 $big = range(1, 1024*1024); /* This consumes lots of memory */
@@ -144,27 +109,20 @@ $big2 = &amp;$big; /* $big and $big2 are both references to the same memory slot
 
 var_dump('original memory', memory_get_usage());
 wow($big); /* $big is a reference, but the function accepts a non-reference : mismatch : duplicate memory */
-var_dump('final memory', memory_get_usage());
-</code></pre>
-
+var_dump('final memory', memory_get_usage());</code></pre>
 <p>Result :</p>
-
 <pre><code>string(15) "original memory"
 int(151223288)
 string(18) "in function wow : "
 int(251886800)
 string(12) "final memory"
-int(151224488)
-</code></pre>
-
+int(151224488)</code></pre>
 <p>Here, there is a classical reference mismatch on a non-object, so PHP will duplicate the passed argument,
 which is a big array, so memory usage will raise significantely because PHP will duplicate (shallow copy) a very huge array
 (and this burns many CPU cycles as well). Sure, if you don't use the variable elsewhere, when the function call
 is finished, PHP destroys the function stack and cleans the dup memory. This, I repeat, if you don't use the argument
 elsewhere. This is just a <a href="http://en.wikipedia.org/wiki/Reference_counting">refcount strategy</a></p>
-
 <p>What about now using an object as passed arg ?</p>
-
 <pre><code>function wow($arg) { var_dump('in function wow : ', memory_get_usage()); }
 
 $big = range(1, 1024*1024); /* This consumes lots of memory */
@@ -174,42 +132,31 @@ $obj2 = &amp;$obj; /* Turn $obj into a reference, by linking it by reference to 
 
 var_dump('original memory', memory_get_usage());
 wow($obj);
-var_dump('final memory', memory_get_usage());
-</code></pre>
-
+var_dump('final memory', memory_get_usage());</code></pre>
 <p>Result:</p>
-
 <pre><code>string(15) "original memory"
 int(151223928)
 string(18) "in function wow : "
 int(151224040)
 string(15) "final memory"
-int(151223992)
-</code></pre>
-
+int(151223992)</code></pre>
 <p>This is a confirmation : PHP doesn't duplicate objects, because objects are internally reference counted themselves.
 Here, PHP just adds one more reference to the object, something that can't be done for other types.
 So yes : usually, using objects in PHP tend to decrease global memory usage, because if you were using references at some
 places, for objects, PHP won't duplicate memory container.</p>
-
 <p>This can easilly be spoted into PHP source code. Have a look at <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_variables.c#106">zval_copy_ctor()</a>
 ,the function called when PHP duplicate a variable. We can see that in the special case of an object,
 PHP just increments a counter, whereas for any other types, it really duplicates memory of the variable, which usually is
 not a bad thing as you don't use very big memory variables everytime, but cases happen where you'll carry a big array (with
 lots of slots) or a huge string (a result of a file_get_contents() for example).</p>
-
 <p>If you were curious about the duplication of arguments when a function is called, you should have a look at the
 <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3182">ZEND_SEND_VAR</a> and <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3145">ZEND_SEND_REF</a> opcodes</p>
-
 <h2 id="other-use-cases">Other use cases<a href="#other-use-cases" class="anchor">#</a></h2>
-
 <p>Any mismatch in function calls is bad. This is true also for internal functions, and some of them accept
 parameters by references, like <strong>array_shift()</strong> for example.
 When you use such functions, make sure to respect the references as well.</p>
-
 <p>But there are other tricks, which I consider not tricks, but just normal and logical behaviors.
 The case of func_get_args() is interesting :</p>
-
 <pre><code>function foo()
 {
     var_dump('Before func_get_args()', memory_get_usage());
@@ -224,14 +171,11 @@ string(22) "Before func_get_args()"
 int(151222120)
 string(21) "After func_get_args()"
 int(251885904)
-*/
-</code></pre>
-
+*/</code></pre>
 <p>What you should know is that func_get_args() will duplicate all the passed variables to the function, ignoring references or not.
 It has to do so, because PHP has no way to know if you're gonna modify the variables later-on.
 You all agree that modifying a variable in $args here should not modify the passed arg right ?
 Example:</p>
-
 <pre><code>function foo()
 {
     $args = func_get_args();
@@ -241,13 +185,9 @@ Example:</p>
 $str = 'bar';
 foo($str);
 
-// here, $str still owns the string 'bar', and not 'foo'
-</code></pre>
-
+// here, $str still owns the string 'bar', and not 'foo'</code></pre>
 <p>So PHP has to duplicate every variable passed on the function stack, when you call func_get_args().</p>
-
 <h2 id="end">End<a href="#end" class="anchor">#</a></h2>
-
 <p>Well, as I said, usually you don't carry over huge variables in PHP scripts. This is a pretty uncommon use case, however,
 as time pass and we ask PHP to build more and more complex systems, managing more and more data; knowing what happens
 behind the scene becomes more and more valuable.
@@ -256,11 +196,10 @@ For example, I will not make PHP the first choice when talking about designing a
     </div>
 
       </article>
-            </div>
           </div>
         
                           <footer>
-            <p>
+            <p class="text-center">
               &copy;
                               <a href="http://jpauli.github.io/">
                   Julien Pauli
@@ -275,10 +214,9 @@ For example, I will not make PHP the first choice when talking about designing a
       </div>
     
     
-              <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js"></script>
-      <script>window.jQuery || document.write('<script src="../../../js/vendor/jquery-1.9.0.min.js"><\/script>')</script>
-      <script src="../../../js/vendor/bootstrap.min.js"></script>
-      <script src="http://yandex.st/highlightjs/7.3/highlight.min.js"></script>
+              <script src="../../../js/jquery-2.1.0.min.js"></script>
+      <script src="../../../js/bootstrap.min.js"></script>
+      <script src="http://yandex.st/highlightjs/8.0/highlight.min.js"></script>
       <script>hljs.initHighlightingOnLoad();</script>
     
       </body>

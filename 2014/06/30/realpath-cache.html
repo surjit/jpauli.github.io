@@ -1,11 +1,9 @@
 <!DOCTYPE html>
-<!--[if lt IE 7]>      <html class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
-<!--[if IE 7]>         <html class="no-js lt-ie9 lt-ie8"> <![endif]-->
-<!--[if IE 8]>         <html class="no-js lt-ie9"> <![endif]-->
-<!--[if gt IE 8]><!--> <html class="no-js"> <!--<![endif]-->
+<html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <title>realpath_cache</title>
 
@@ -17,102 +15,77 @@
     <link rel="canonical" href="http://jpauli.github.io//2014/06/30/realpath-cache.html"/>
               <link rel="alternate" href="http://jpauli.github.io//feed/atom.xml" type="application/atom+xml" title="Julien Pauli PHP&#039;s life"/>
       
-        <link rel="stylesheet" href="../../../css/bootstrap.min.css"><link rel="stylesheet" href="../../../css/bootstrap-responsive.min.css"><link rel="stylesheet" href="../../../css/main.css"><link rel="stylesheet" href="http://yandex.st/highlightjs/7.3/styles/pojoaque.min.css">    
-    <script src="../../../js/vendor/modernizr-2.6.1-respond-1.1.0.min.js"></script>
-  </head>
+        <!-- Latest compiled and minified CSS --><link rel="stylesheet" href="../../../css/bootstrap.min.css"><link rel="stylesheet" href="../../../css/bootstrap-theme.min.css"><link rel="stylesheet" href="http://yandex.st/highlightjs/8.0/styles/pojoaque.min.css">      </head>
 
   <body>
-    <!--[if lt IE 7]>
-        <p class="chromeframe">You are using an outdated browser. <a href="http://browsehappy.com/">Upgrade your browser today</a> or <a href="http://www.google.com/chromeframe/?redirect=true">install Google Chrome Frame</a> to better experience this site.</p>
-    <![endif]-->
-
-    
-          <div class="navbar navbar-fixed-top">
-          <div class="navbar-inner">
-              <div class="container">
-                  <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
-                      <span class="icon-bar"></span>
-                      <span class="icon-bar"></span>
-                      <span class="icon-bar"></span>
-                  </a>
-                  <a class="brand" href="../../..">Julien Pauli PHP&#039;s life</a>
-                  <div class="nav-collapse collapse">
-                    <ul class="nav">
-                                                                                                            <li><a href="../../../index.html">Welcome to julien pauli&#039;s page</a></li>
-                                                            <li><a href="../../../about.html">About</a></li>
-                                                                                                </ul>
-                                      </div>
-              </div>
-          </div>
-      </div>
-    
-    
           <div class="container">
-
+                  <div class="page-header">
+            <ul class="list-inline pull-right">
+                                                <li>
+                    <a href="../../../about.html">
+                      About
+                    </a>
+                  </li>
+                                  <li>
+                    <a href="../../../index.html">
+                      Welcome to julien pauli&#039;s page
+                    </a>
+                  </li>
+                                          </ul>
+            <h1>
+              <a href="../../..">
+                Julien Pauli PHP&#039;s life
+              </a>
+            </h1>
+          </div>
         
-                  <div class="row">
-            <div class="span10 offset1 content">
-                                                <div class="page-header">
-                    <h1>realpath_cache</h1>
-                  </div>
-                              
-                <article>
-    <div class="pull-right date">
-      <i class="icon-calendar"></i>
+                  <div class="content">
+                                          <h1>
+                  realpath_cache</h1>
+                          
+              <article>
+    <p class="text-muted">
+      <span class="glyphicon glyphicon-calendar"></span>
       Jun 30th, 2014
-    </div>
+    </p>
 
     <div class="body">
       <h2 id="introduction">Introduction<a href="#introduction" class="anchor">#</a></h2>
-
 <p>Do you know those PHP functions, realpath_cache_get(), realpath_cache_size() ?
 php.ini setting <em>realpath_cache</em> ?</p>
-
 <p>Realpath cache is a really important concept to know about, especially when it comes to play with symbolic links, a situation
 some meet when they deploy code.
 This setting is about performance and IO reduction of your server. It has been introducted in PHP 5.1 , when frameworks started
 to show in the PHP scene.</p>
-
 <h3 id="a-recall-on-the-stat-system-call">A recall on the stat system call<a href="#a-recall-on-the-stat-system-call" class="anchor">#</a></h3>
-
 <p>Ok, so, you know how your system works don't you ? Let me refresh your mind.
 When one want to play with a <em>path</em>, the Kernel and the filesystem must know exactly what you talk about.
 So, whenever you'll use a path to access a file (in the Unix meaning), you or your library or at least your Kernel will
 have to resolve it.
 Resolving a path is getting information about it : basically is it a file ? is it a directory or is it link ?</p>
-
 <p>The way to do this is by asking the system about the file type, and, in case of a symbolic link, the final file target.
 Whenever you use relative paths, such as <em>"../hey/./you/../foobar"</em>, you have to resolve them to full paths, and then resolve
 those full paths to file entities (Unix sense of "file", so a true file of any type or a directory or a link).</p>
-
 <p>Usually, for relative paths, you're gonna call the <a href="http://repo.or.cz/w/glibc.git/blob/edea402804bce917cfd7cd1af76212e6364c23db:/stdlib/canonicalize.c#l43">realpath() C function</a>. As you can see, <a href="http://repo.or.cz/w/glibc.git/blob/edea402804bce917cfd7cd1af76212e6364c23db:/stdlib/canonicalize.c#l161">it will lead to</a> a stat() system call.</p>
-
 <p>Calling stat() is heavy, first because this is a system call, needing a Kernel trap and a context switch, and also because it most likely asks the disk about metadata.
-The kernel source for stat() is at <a href="http://lxr.free-electrons.com/source/fs/stat.c#L190">http://lxr.free-electrons.com/source/fs/stat.c#L190</a>. Not surprinsingly, it leads to a FileSystem call (inode-&gt;getattr()).
+The kernel source for stat() is at <a href="http://lxr.free-electrons.com/source/fs/stat.c#L190"><a href="http://lxr.free-electrons.com/source/fs/stat.c#L190">http://lxr.free-electrons.com/source/fs/stat.c#L190</a>. Not surprinsingly, it leads to a FileSystem call (inode-&gt;getattr()).
 Usually, the kernel uses <a href="http://www.faqs.org/docs/linux_admin/buffer-cache.html">its buffer caches</a>, so the impact is really 
 tiny, but the buffer cache on a very busy server may not contain your information, thus an IO, which is something you'd prefer
 preventing as much as possible.</p>
-
 <h2 id="what-php-does">What PHP does ?<a href="#what-php-does" class="anchor">#</a></h2>
-
 <p>In PHP projects, we use many files. Nowadays, we use tons of classes, meaning tons of files (assuming one class per file).
 So, autoload or not, we'll have to include those files, we'll have to read them, we'll have to ask the Kernel for stat informations about them.
 That's why whenever you access a file in PHP, PHP tries to resolve the paths, resolve the links, get file informations; all this using the stat() system call, and then caches the result from this call into what is called the <strong>realpath cache</strong>.
 Many other softwares use a stat cache, read their source code and you'll notice that ;-)</p>
-
 <p>PHP will cache the result of the call, but only about the realpath. Any other information (owner, access rights, times ...) won't be
 cached in this cache, but in the last file access cache.</p>
-
 <p>As usual, we find the solution by having a look at the source code.
 Whenever you access a file in PHP, <a href="http://lxr.php.net/xref/PHP_5_5/main/fopen_wrappers.c#473">php_resolve_path()</a> is used.
 This function quickly calls <a href="http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#1925">tsrm_reapath()</a> which itself
 calls <a href="http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#1151">virtual_file_ex()</a> and finally, <a href="http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#750">tsrm_realpath_r()</a>.</p>
-
 <p>That's where things get interested. Functions like <a href="http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#830">realpath_cache_find()</a> are called, to lookup in a table if the stat informations have already been asked and cached for this
 specific path.</p>
-
 <p>A <a href="http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.h#211">realpath_cache_bucket</a> structure is used, which encapsulates many things :</p>
-
 <pre><code>typedef struct _realpath_cache_bucket {
     unsigned long                  key;
     char                          *path;
@@ -128,16 +101,11 @@ specific path.</p>
     unsigned char                  is_writable;
 #endif
     struct _realpath_cache_bucket *next;
-} realpath_cache_bucket;
-</code></pre>
-
+} realpath_cache_bucket;</code></pre>
 <p>If the bucket is not found, <a href="http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.h#139">php_sys_lstat()</a> will be called, this function is a proxy to lstat(). Then finally, the bucket is <a href="http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#1139">saved into the realpath cache</a>.</p>
-
 <h2 id="php-settings-and-customization">PHP Settings and customization<a href="#php-settings-and-customization" class="anchor">#</a></h2>
-
 <p>So, in PHP, you have several things to know about realpath cache.
 First, the INI settings :</p>
-
 <ul><li><a href="http://www.php.net/manual/en/ini.core.php#ini.realpath-cache-size">realpath_cache_size</a></li>
 <li><a href="http://www.php.net/manual/en/ini.core.php#ini.realpath-cache-ttl">realpath_cache_ttl</a></li>
 </ul><p>The manual warns you, if you use files that are not modified often (production servers), you should increase the
@@ -148,7 +116,6 @@ If your realpath cache is full, there is no space for other entries, and then PH
 misses, stressing your Kernel even more.
 The size is hard to compute theoretically. As we can see from the source code <a href="http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#643">in here</a>, each entry consume sizeof(realpath_cache_bucket) + the total number of characters of the resolved path + 1.
 To me (LP64), sizeof(realpath_cache_bucket) = 56 bytes.</p>
-
 <p>There is another trick. PHP resolves <strong>every paths it meets</strong> and splits every path part, resolving it.
 I explain : if you access the file "/home/julien/www/fooproject/app/web/entry.php", PHP is gonna split this path into as many single units
 as can fit. PHP is gonna resolve "/home", creating an entry for it into the cache. Then "/home/julien", then "/home/julien/www", etc..
@@ -156,29 +123,20 @@ Why this ? Well, first this is used to check access at every level of directory.
 pathnames using string concatenations, PHP may have a chance to have checked simple parts, it will then know if the user may access
 it or not, by asking the realpath cache for details. A cache hit is very cheap.
 The source code of <a href="http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#750">tsrm_realpath_r()</a> details the procedure. this is a recursive function which gets called for every subpath entry, by default.</p>
-
 <p>As you can see from the preceding paragraph, better have a cache !</p>
-
 <p>This also shows that priming the cache by hitting few URLs from your website before opening it to public just after a new deploy is important here as well. This will not only prime your OPcode cache, but also the realpath cache, and your Kernel's page cache as well.</p>
-
 <p>How to clear this cache ? The function is hidden in PHP. realpath_cache_clear() ? No, it doesn't exist, too bad :-)
 Welcome <em>clearstatcache(true)</em>.
 The true parameter is very important, it is called $clear_realpath_cache, so yes, obviously this is what we want to do.</p>
-
 <h2 id="an-example">An example<a href="#an-example" class="anchor">#</a></h2>
-
 <p>So here is an example.</p>
-
 <pre><code>&lt;?php
 $f = @file_get_contents('/tmp/bar.php');
 
 echo "hello";
 
-var_dump(realpath_cache_get());
-</code></pre>
-
+var_dump(realpath_cache_get());</code></pre>
 <p>And here is the result :</p>
-
 <pre><code>hello
 array(5) {
   ["/home/julien.pauli/www/realpath_example.php"]=&gt;
@@ -234,48 +192,35 @@ array(5) {
     ["realpath"]=&gt;
     string(22) "/home/julien.pauli/www"
     ["expires"]=&gt;
-    int(1404137986)
-</code></pre>
-
+    int(1404137986)</code></pre>
 <p>What we can see, is that the full path to my example PHP file has been resolved, parts by parts.
 Then, as <em>/tmp/bar.php</em> doesn't exist on my disk, this entry is obviously missing from the cache. However, we can see that PHP
-resolved <em>/tmp</em>, so it now knows that it can access to /tmp, and any further resolution behind <em>/tmp</em> will be cheaper than the first one.</p>
-
+resolved <em>/tmp</em>, so it now knows that it can access to /tmp, and any further resolution behind <em>/tmp</em> will be cheaper than the first one. </p>
 <p>In the array returned by realpath_cache_get(), you can see important information, such as the expires timestamp.
 This has been computed related to the realpath_cache_ttl setting, and the time the file has been accessed.
 The key field is a hash of the resolved path, a variant of <a href="http://www.isthe.com/chongo/tech/comp/fnv/index.html">FNV hash</a> is used, this
 is an internal information you shouldn't really need though (which may be integer or float, depending on your integer max size).</p>
-
 <p>Now, if you'd call clearstatcache(true), you'd reset this array and force PHP to stat() any new file access that was previously cached.</p>
-
 <h2 id="the-opcode-caches-case">The OPcode caches case<a href="#the-opcode-caches-case" class="anchor">#</a></h2>
-
 <p>Ready for another trick ?</p>
-
 <p><strong>The realpath cache is process bound, and not shared into shared memory</strong></p>
-
 <p>This means that anytime a cache entry expires, changes, or you empty the cache manually, you have to do this <strong>for every process in your pool</strong>.
 This is usually why people fail at deploying code using OPCode caches solutions.
 What people usually do when deploying, is changing a symlink from say /www/deploy-a to /www/deploy-b. What they usually forget is that opcode cache solutions (at least OPCache and APC) rely on the internal realpath cache from PHP.
 So those opcode cache solutions won't notice the link change, and worse, they're gonna start noticing it little by little, as the realpath cache of every entry slowly expires. You know the result.</p>
-
 <p>What I find beeing the best solution for deployment to prevent this uncool mechanism to happen, is to prepare a totally new PHP worker pool, and load balance your FastCgi Handler onto it, giving up with the old one when all old workers have finished.</p>
-
 <p>This solution has many advantages : deploy A runs on memory pool A, and deploy B runs on memory pool B. End of story. We use memory image isolation to be absolutely sure that nothing will be shared between two deploys. Realpath cache, OPCode cache, etc... Everything is new.
 FastCGI pools load balancing is possible at least with Lighttpd and Nginx :-)
 I experienced this solution on production, and it is rock solid !</p>
-
 <h1 id="end">End<a href="#end" class="anchor">#</a></h1>
-
 <p>I've been asked to write some lines about realpath cache, probably because people had bad experience about it (I think at code deployment). Well, now you know how it works, why it's here and how and why to customize it. Did I forget anything ?</p>
     </div>
 
       </article>
-            </div>
           </div>
         
                           <footer>
-            <p>
+            <p class="text-center">
               &copy;
                               <a href="http://jpauli.github.io/">
                   Julien Pauli
@@ -290,10 +235,9 @@ I experienced this solution on production, and it is rock solid !</p>
       </div>
     
     
-              <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js"></script>
-      <script>window.jQuery || document.write('<script src="../../../js/vendor/jquery-1.9.0.min.js"><\/script>')</script>
-      <script src="../../../js/vendor/bootstrap.min.js"></script>
-      <script src="http://yandex.st/highlightjs/7.3/highlight.min.js"></script>
+              <script src="../../../js/jquery-2.1.0.min.js"></script>
+      <script src="../../../js/bootstrap.min.js"></script>
+      <script src="http://yandex.st/highlightjs/8.0/highlight.min.js"></script>
       <script>hljs.initHighlightingOnLoad();</script>
     
       </body>
