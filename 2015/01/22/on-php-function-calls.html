@@ -98,16 +98,15 @@ In fact, <code>strlen()</code> is probably the fastest PHP function that exists.
          1    &gt; JMPZ                                                  ~0, -&gt;3
    5     2  &gt; &gt; JMP                                                       -&gt;3
    6     3  &gt; &gt; RETURN                                                     1</code></pre>
-<p>As you can see, there is no function call involved into the <code>isset()</code> code (<strong>DO_FCALL<strong>), as well as there is no </strong>IS_SMALLER</strong> OPCode.
-<code>isset()</code> will directly return a boolean for evaluation, whereas <code>strlen()</code> will return a temporary variable, passed to __IS_SMALLER__
-OPCode, and only this OPCode result will be evaluated by the <code>if()</code>.
+<p>As you can see, there is no function call involved into the <code>isset()</code> code (<strong>DO_FCALL</strong>), as well as there is no <strong>IS_SMALLER</strong> OPCode (just ignore the RETURN statements).
+<code>isset()</code> will directly return a boolean for evaluation, whereas <code>strlen()</code> will return a temporary variable, passed to <strong>IS_SMALLER</strong> OPCode, and only this OPCode result will be evaluated by the <code>if()</code>.
 That's two OPCodes for the <code>strlen()</code> code structure and only one for the <code>isset()</code> one, which lets us smell that the <code>isset()</code> structure will also be faster because of this fact. (computing two operations is usually slower that computing just one).</p>
-<p>Let's now analyze how function calls work in PHP, and how they are different from <code>isset()</code></p>
+<p>Let's now analyze how function calls work in PHP, and how they are different from <code>isset()</code>.</p>
 <h2 id="php-function-calls-in-deep">PHP function calls in deep<a href="#php-function-calls-in-deep" class="anchor">#</a></h2>
 <p>Let me warn you : function calls are complex in PHP. If you want to continue reading this part, you'd better fasten your seat belt ;-)
 In PHP's design and source code, the most complex VM (VM = Virtual Machine = PHP execution stage code) part to analyze is all that's related to function calls.
 I will try to sumarize things here, so that you get enough info to understand, without all the full details related to function calls. You still can fetch them by analyzing the source code.</p>
-<p>Here, we will talk about runtime of a function call. You should know that the compile time PHP function related operations are also heavy to run for the machine (I mean, really heavy), but as you use an OPCode cache, you don't suffer from anything related to compile time.
+<p>Here, we will talk about <em>runtime</em> of a function call. You should know that the <em>compile time</em> PHP function related operations are also heavy to run for the machine (I mean, really heavy), but as you use an OPCode cache, you don't suffer from anything related to compile time.
 So here, we assume the script is compiled, and we'll analyze what happens at <em>runtime</em> only.</p>
 <p>Let's just dump the OPCode of an internal function call (<code>strlen()</code>, here) :</p>
 <pre><code>strlen($a);
@@ -119,7 +118,7 @@ line     #* I O op                           fetch          ext  return  operand
 <p>To understand function calls, one should know those points :</p>
 <ul><li>Function calls and method calls are exactly the same</li>
 <li>User functions calls and internal functions calls are differently handled</li>
-</ul><p>That's why I talked about an "internal" function call in my last statement, because I show an example of a call to an internal PHP function, that is a PHP function that's designed in C, here : <code>strlen()</code>. If we were dumping the OPCode of a "user" PHP function - that is a function that a programmer wrote using the PHP language - OPCode could have been different, but they could have been exactly the same as well.</p>
+</ul><p>That's why I talked about an "internal" function call in my last statement, because I show an example of a call to an internal PHP function, that is a PHP function that's designed in C, here : PHP's <code>strlen()</code>. If we were dumping the OPCode of a "user" PHP function - that is a function that a programmer wrote using the PHP language - OPCode could have been different, but they could have been exactly the same as well.</p>
 <p>This is because PHP doesn't generate the same OPCode weither at compile time it knows the function, or not.
 Obviously, internal PHP functions are known at compile time (because they are discovered before the compiler even starts), but that is not necessary true for user functions, which can be called without having been declared before, but after.
 Also, when talking about the execution, internal PHP functions are more efficient than user PHP functions, as well as internal benefit from more validation mechanisms than user functions.</p>
@@ -129,7 +128,7 @@ Like in C, or in every language, when you want to call a function, you first hav
 Then, you call the function, and this one will most likely pop those arguments from the stack, to use them.
 Once the function call is done, you have to destroy the stack frame you allocated to it.</p>
 <p>This is the main rule of doing things, but PHP optimizes the stack frame creation and deletion and delay those operations so that they don't get called at every function call.</p>
-<p>__SEND_VAR__ is an opcode that is responsible of pushing args onto the stack frame. The compiler inevitably generates such an OPCode before a function call. And there will be as many of them as there are variables to pass to the function. See :</p>
+<p><strong>SEND_VAR</strong> is an opcode that is responsible of pushing args onto the stack frame. The compiler inevitably generates such an OPCode before a function call. And there will be as many of them as there are variables to pass to the function. See :</p>
 <pre><code>$a = '/';
 setcookie('foo', 'bar', 128, $a);
 
@@ -141,12 +140,12 @@ line     #* I O op                           fetch          ext  return  operand
          3      SEND_VAL                                                 128
          4      SEND_VAR                                                 !0
          5      DO_FCALL                                      4          'setcookie'</code></pre>
-<p>This shows another OPCode : __SEND_VAL__. In fact, there exists 4 opcodes to send something on the function stack :</p>
-<ul><li>__SEND_VAL__ : send a compile-time constant value (a string, an int, etc...)</li>
-<li>__SEND_VAR__ : send a PHP variable ($a)</li>
-<li>__SEND_REF__ : send a PHP variable beeing a reference, to a function accepting its arg by reference</li>
-<li>__SEND_VAR_NO_REF__: Optimized handler used in case of nested function calls</li>
-</ul><p>We'll just foresee <strong>SEND_VAR<strong>. What does </strong>SEND_VAR</strong> do ?</p>
+<p>This shows another OPCode : <strong>SEND_VAL</strong>. In fact, there exists 4 opcodes to send something on the function stack :</p>
+<ul><li><strong>SEND_VAL</strong> : sends a compile-time constant value (a string, an int, etc...)</li>
+<li><strong>SEND_VAR</strong> : sends a PHP variable ($a)</li>
+<li><strong>SEND_REF</strong> : sends a PHP variable beeing a reference, to a function accepting its arg by reference</li>
+<li><strong>SEND_VAR_NO_REF</strong>: Optimized handler used in case of nested function calls</li>
+</ul><p>We'll just foresee <strong>SEND_VAR</strong>. What does <strong>SEND_VAR</strong> do ?</p>
 <pre><code>ZEND_VM_HELPER(zend_send_by_var_helper, VAR|CV, ANY)
 {
     USE_OPLINE
@@ -181,7 +180,7 @@ Then it adds a refcount to the variable, and pushes it onto the VM stack :</p>
 zend_vm_stack_push(varptr TSRMLS_CC);</code></pre>
 <p>Yes, everytime you call a function, you increment the refcount of every stack argument variable by one : because the function stack itself will reference the variable, not yet the function code, just the stack at the moment.</p>
 <p>Pushing the variable onto the stack is pretty light, but the stack consumes some memory. It is allocated at execution time, but its size is computed at compile time.</p>
-<p>After pushing the args onto the stack, we run __DO_FCALL__, and here, you'll see how many tons of code and checks are performed, turning PHP function calls into "slow" statements :</p>
+<p>After pushing the args onto the stack, we run <strong>DO_FCALL</strong>, and here, you'll see how many tons of code and checks are performed, allowing us to assume PHP function calls are a "slow" statement :</p>
 <pre><code>ZEND_VM_HANDLER(60, ZEND_DO_FCALL, CONST, ANY)
 {
     USE_OPLINE
@@ -251,7 +250,7 @@ PHP can define new functions at runtime, and PHP can autoload files, defining cl
     EG(called_scope) = EX(call)-&gt;called_scope;
 }</code></pre>
 <p>You know that each function body has its own variable scope. Well it's not magical : the engine switches the scope tables before calling the function code, so that if this one asks for a variable, it will be looked for into the right table.
-And as functions and methods are all the same, you can read some instructions about binding the $this pointer for a method.
+And as functions and methods are all the same, you can read some instructions about binding the <code>$this</code> pointer for a method.
 Let's keep going.</p>
 <pre><code>if (fbc-&gt;type == ZEND_INTERNAL_FUNCTION) {</code></pre>
 <p>I told you, internal functions (those designed in C) take a different execution path from user functions. Usually, internal function execution path is more optimized and shorter than user function one, because for internal functions, in C, we can tell the engine internal info about our function, something user designed functions cant.</p>
@@ -271,7 +270,7 @@ ZEND_FUNCTION(strlen)
 }</code></pre>
 <p>And what does <code>strlen()</code> ? It pops the argument stack using <code>zend_parse_parameters()</code>.
 And this zend_parse_parameters() function is "slow", because it has to pop the stack and transform the argument to a type which is expected by the function : for <code>strlen()</code> : a string.
-So whatever the programmer passed onto the stack to <code>strlen()</code>, this one will convert the argument to a string.
+So whatever the programmer passed onto the stack to <code>strlen()</code>, this one could need to convert the argument to a string, which is not a light process in term of performance.
 <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_API.c#729">Read the source of zend_parse_parameters()</a> to have an idea on how many operations we ask our CPU to do, when poping the arguments from a function stack frame.</p>
 <p>Let's continue into the execution, we just executed the function body code, now, let's cleanup things, starting by restoring the scope :</p>
 <pre><code>if (should_change_scope) {
@@ -302,14 +301,17 @@ So whatever the programmer passed onto the stack to <code>strlen()</code>, this 
     }</code></pre>
 <h3 id="a-conclusion-on-php-function-calls">A conclusion on PHP function calls ?<a href="#a-conclusion-on-php-function-calls" class="anchor">#</a></h3>
 <p>Now, can you imagine the time your machine spends for calling a very-tiny-and-simple <code>strlen()</code> function ?
-Now multiply this time, because <code>strlen()</code> (or foobarbaz()) is called into a loop, with 25,000 iterations, slowly, micro/milli seconds turn to seconds...
-Keep in mind that I just showed you the hot path of instructions beeing run at every PHP function call. Many other things happen as well next to those mandatory steps.</p>
+Now multiply this time, because <code>strlen()</code>is called into a loop, with 25,000 iterations, slowly, micro/milli seconds turn to seconds...
+Keep in mind that I just showed you the hot path of instructions beeing run at every PHP function call. Many other things happen as well next to those mandatory steps.
+Also keep in mind that here, because <code>strlen()</code> "useful work" is just one line, the overhead of the engine preparing the function call is larger than the useful function code itself, but that is generaly not the case of a big average of function calls, where the own code of the function itself will consume hopefuly more performance than the noisy surrounding engine code.</p>
 <p>You may complain about this. You have this right, but please, don't come to me complaining without proposing a valid technical solution to improve this, knowing that if you break compatibility, you'll have to show strong arguments about this ;-)</p>
 <p>The PHP-function-call-related part of the code has been reworked into PHP7 (among many things), and in PHP7, function calls are faster than this. As you can imagine by reading this : there is lot of room for optimization yet into PHP source code, and we, as contributors, try to find ways to optimize things at every new PHP version.</p>
 <p>Not only talking about PHP7, the PHP-function-call-related code has been optimized in every version of PHP, from 5.3 to 5.4, and especially from 5.4 to 5.5, where we changed the way the stack frame is computed and created, for example (without breaking compatibility).
 It is always interesting to read the readme about internals change of each PHP version. <a href="https://github.com/php/php-src/blob/PHP-5.5/UPGRADING.INTERNALS#L24">Here is the one for PHP5.5</a> talking about changes into the executor and into how function calls are performed, compared to PHP54.</p>
+<p>As a conclusion, remember that this is not a blame to PHP. The PHP source code has been worked for twenty years now, by many different very talented brains, so believe me : it has been thought, worked and optimized many times as of nowadays.
+The proof is that you use PHP, you have some PHP code in production, and it just works and perform very well, with a nice overall performance factor in the very large majority of use cases. Am I wrong ?</p>
 <h3 id="what-about-isset">What about isset() ?<a href="#what-about-isset" class="anchor">#</a></h3>
-<p><code>isset()</code> is not a function. Parenthesis don't automatically mean "function call". <code>isset()</code> is compiled into a special Zend VM OPcode (__ISSET_ISEMPTY__), which will not trigger a function call and suffer from function call overhead we have detailed in the last chapter.</p>
+<p><code>isset()</code> is not a function. Parenthesis don't automatically mean "function call". <code>isset()</code> is compiled into a special Zend VM OPcode (<strong>ISSET_ISEMPTY</strong>), which will not trigger a function call and suffer from function call overhead we have detailed in the last chapter.</p>
 <p>As <code>isset()</code> can take several parameter types, its Zend VM code is a little bit long, but just isolating the parameter-is-a-string-offset part, it leads to this :</p>
 <pre><code>ZEND_VM_HELPER_EX(zend_isset_isempty_dim_prop_obj_handler, VAR|UNUSED|CV, CONST|TMP|VAR|CV, int prop_dim)
 {
@@ -358,19 +360,19 @@ result will be passed 1, and then the resulting operation will be the boolean TR
 Don't worry about the length computation : <code>Z_STRLEN_P(container)</code> will not compute anything. Remember that PHP already knows the length
 of your string, <code>Z_STRLEN_P(container)</code> just read that value in memory : very few CPU cycles are needed for that.</p>
 <p>Now I think you understand that there are much much more CPU instructions involved in the PHP function call of <code>strlen()</code> than in the
-use of <code>isset()</code> in the case of a string offset. You see how <code>isset()</code> is light ? Don't be scared by many if(), they are not the heaviest parts of the C code and can be optimized in some ways by the C compiler.
-The <code>isset()</code> handler code doesn't lookup hashtables, doesn't perform any check, doesn't push any pointer to any stack frame, to pop them back later, eventually transforming the data...
-The code is way lighter than the overall code of a function call, with many less memory accesses (slow). And in this particular case of a string : it leads to a huge improvement if you were iterating this code over and over again into a loop.</p>
+use of <code>isset()</code> in the case of a string offset. You see how <code>isset()</code> is light ? Don't be scared by many if statements, they are not the heaviest parts of the C code and can be optimized in some ways by the C compiler.
+The <code>isset()</code> handler code doesn't lookup hashtables, doesn't perform any complex check, doesn't push any pointer to any stack frame, to pop them back later, eventually transforming the data...
+The code is way lighter than the overall code of a function call, with many less memory accesses (this is the most important part to notice). And in this particular case of a string : it leads to a huge improvement if you were iterating this code over and over again into a loop.
+Of course, if you just run one iteration of comparison between <code>strlen()</code> and <code>isset()</code>, you will find the performance benefit really low, about 5ms difference, something like that. But multiplied by 50,000 iterations...</p>
 <p>Notice as well, <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#4445">by reading the whole isset() source code</a>, that it is shared with the <code>empty()</code> code.
 <code>empty()</code> on a string offset will differ from the same <code>isset()</code> statement by just additionnaly reading if the first character of the
 string is not the '0' character.
 <code>empty()</code> and <code>isset()</code> lead to the exact same code beeing run, with just one little tiny diff somewhere, so <code>empty()</code> will have the exact same performance impact that <code>isset()</code> (assuming you use both with the same parameter)</p>
 <h2 id="what-can-opcache-do-for-us">What can OPCache do for us ?<a href="#what-can-opcache-do-for-us" class="anchor">#</a></h2>
-<p>Short answer : Nothing.
-OPCache optimizes your code. I talked about this many times in worldwide conferences, you may fetch my slides at <a href="http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals"><a href="http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals">http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals</a> for example.</p>
-<p>We've been asked on github if we could add an optimization pass that would switch <code>strlen()</code> to <code>isset()</code>.
-That's not possible.
-Remember that OPCache optimization passes act on the OPArray before storing it into shared memory. <em>This happens at compile time and not
+<p>Short answer : Nothing.</p>
+<p>OPCache optimizes your code. I talked about this many times in worldwide conferences, you may fetch my slides at <a href="http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals"><a href="http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals">http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals</a> for example.</p>
+<p>We've been asked on github if we could add an optimization pass that would switch <code>strlen()</code> to <code>isset()</code> : That's not possible.</p>
+<p>Remember that OPCache optimization passes act on the OPArray before storing it into shared memory. <em>This happens at compile time and not
 at runtime</em>. But at compile time, how can we know that the variable you pass to <code>strlen()</code> is a string ? We can't. That's the PHP problem,
 and that's a part of how HHVM/Hack solved it. If we could type our variables in PHP, that is, supporting strong typing, then we could optimize
 much more things in compiler passes (as well as into the VM).
@@ -390,8 +392,8 @@ But here :</p>
  /* do something else */
 }</code></pre>
 <p>What is in $a ? Does even $a exist here ? Is it a string ?
-At the time the optimizer shows in, it just can't answer those questions, that is the VM executor role.
-OPCache optimizer already optimizes many things, but by the heavilly dynamic nature of PHP, we can't optimize everything.</p>
+At the time the optimizer shows in, it just can't answer those questions, that is the VM executor role. At compile time, we end up handling abstract structure with no real type yet, type and related memory usage will be known/allocated at runtime only.</p>
+<p>OPCache optimizer already optimizes many things, but by the heavilly dynamic nature of the PHP language, we can't optimize everything, at least not as much as in Java's compilers, or even C's compilers.</p>
 <p>That's why when I hear proposal to add strong typing to the language, I like it, because it will boost the performance.
 But PHP will never be a strongly typed language ;-)</p>
 <p>Also, proposal such as adding a read-only hint to class property declaration :</p>
@@ -400,8 +402,8 @@ But PHP will never be a strongly typed language ;-)</p>
 }</code></pre>
 <p>Not talking about the functionnality itself, my mind is tied to performance : such proposals are really nice in term of performance optimization, because here, when we compile such class, we know the value of $a, and we know it can't
 change, so we can store its value somewhere, use a cached pointer, and strongly optimize every access to such a variable into weither
-PHP compiler, or OPCache optimization passes.
-This case really looks like a constant, but I think you understood the base line here, the more you can give hints to the compiler, the more it will be able to optimize the OPCode for the VM to be faster running it.</p>
+PHP compiler, or OPCache optimization passes.</p>
+<p>This case really looks like managing a constant, but I think you understood the base line here : the more informations you can give to the compiler about the type and the usage of your variables or functions, the more it will be able to optimize the OPCode for the VM and the structures used, to get closer to what the CPU will need. A good tradeoff between those two concepts is called "JIT" compilation, a subject I won't talk about in this article.</p>
 <h2 id="optimization-tips-and-conclusion">Optimization tips and conclusion<a href="#optimization-tips-and-conclusion" class="anchor">#</a></h2>
 <p>The first tip I would like to share with you, is to not blindly change your code, everywhere you have a good feeling of it.
 Profile. Profile, and see the results.
@@ -428,7 +430,8 @@ php_uname() =&gt; use the PHP_OS constant
 php_sapi_name() =&gt; use the PHP_SAPI constant
 time() =&gt; read $_SERVER['REQUEST_TIME']
 session_id() =&gt; use the SID constant</code></pre>
-<p>And yes, I tell it because we still see such things nowadays (uncommonly) : prevent silly things, like :</p>
+<p>The above examples are sometimes not 100% equivalent, and I let you read the documentation to find the differences.</p>
+<p>Ah ho yes, let me tell it because we still see such things nowadays (uncommonly) : prevent silly things, like :</p>
 <pre><code>function foo() {
     bar();
 }</code></pre>
@@ -436,14 +439,14 @@ session_id() =&gt; use the SID constant</code></pre>
 <pre><code>function foo() {
     call_user_func_array('bar', func_get_args());
 }</code></pre>
-<p>Basically, don't stop working, don't stop using PHP, don't optimize something "because you heard that", "because someone told you that".
-Profile your script and verify those assumptions by yourself, do not blindly apply some performance patch assuming that.</p>
+<p>Basically, don't stop working, don't stop using PHP, don't optimize something "because you heard that", "because someone told you that", and don't design your application by performance, but keep doing it by features.</p>
+<p>However, profile your script, often, and verify every assumptions by yourself, do not blindly apply some performance patch assuming that...? Check by yourself.</p>
 <p>We, at Blackfire engineer team, spend many time finding interesting metrics to show our PHP users. We use our deep knowledge of the PHP
 engine to gather many items showing you what's happening into the deepness of your PHP scripts.
 Even if the GUI doesn't show it yet, Blackfire probe extension measures many things, like when the garbage collector has been triggered, what it does, how many objects you created/destroyed in your functions, how many reference mismatch you performed when calling your functions, and even deeper metrics, such as session serialization time, <code>foreach()</code> bad behaviors (there are many things to say about foreach())... basicaly, everything that may help a developer find performance spots, and how to fix them.</p>
 <p>Also, don't forget that you will at some point hit the limits of the language. Then it will probably be time to switch it.
 PHP is not the right language to build an ORM, to make a video game, to create an HTTP server, to batch process some text based files or to create a parser of any kind.
-It can do it, but it can't do it efficiently, and you'll hit a limit sooner or later, a limit that is really really close compared to
+It can do it, but it can't do it efficiently, under a high load. You'll hit a limit that is really close compared to
 the one a better suitable language for such tasks will show, aka Java, Go or probably the most efficient language in the world nowadays, should you really well use it : C/C++ (Both Java and Go are also written in C/C++).</p>
     </div>
 
