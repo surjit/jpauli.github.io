@@ -5,7 +5,7 @@ title:  realpath_cache
 
 ##Introduction
 
-Do you know those PHP functions, realpath_cache_get(), realpath_cache_size() ?
+Do you know those PHP functions, `realpath_cache_get()`, `realpath_cache_size()` ?
 php.ini setting *realpath_cache* ?
 
 Realpath cache is a really important concept to know about, especially when it comes to play with symbolic links, a situation
@@ -37,7 +37,7 @@ preventing as much as possible.
 
 In PHP projects, we use many files. Nowadays, we use tons of classes, meaning tons of files (assuming one class per file).
 So, autoload or not, we'll have to include those files, we'll have to read them, we'll have to ask the Kernel for stat informations about them.
-That's why whenever you access a file in PHP, PHP tries to resolve the paths, resolve the links, get file informations; all this using the stat() system call, and then caches the result from this call into what is called the **realpath cache**.
+That's why whenever you access a file in PHP, PHP tries to resolve the paths, resolve the links, get file informations; all this using the `stat()` system call, and then caches the result from this call into what is called the **realpath cache**.
 Many other softwares use a stat cache, read their source code and you'll notice that ;-)
 
 PHP will cache the result of the call, but only about the realpath. Any other information (owner, access rights, times ...) won't be
@@ -71,7 +71,7 @@ A [realpath_cache_bucket](http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.
 	} realpath_cache_bucket;
 
 
-If the bucket is not found, [php_sys_lstat()](http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.h#139) will be called, this function is a proxy to lstat(). Then finally, the bucket is [saved into the realpath cache](http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#1139).
+If the bucket is not found, [php_sys_lstat()](http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.h#139) will be called, this function is a proxy to `lstat()`. Then finally, the bucket is [saved into the realpath cache](http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#1139).
 
 ##PHP Settings and customization
 
@@ -84,8 +84,8 @@ First, the INI settings :
 The manual warns you, if you use files that are not modified often (production servers), you should increase the
 TTL.
 Also, the default size is ridiculously weak. 16K are gonna be filled in one web request, assuming a framework usage like Symfony2.
-Monitor your realpath_cache_get() return, you'll see that you hit the default 16K limit very soon. You'd better increase this value to something like 512K or even a megabyte.
-If your realpath cache is full, there is no space for other entries, and then PHP will start abusing the stat() call because of cache
+Monitor your `realpath_cache_get()` return, you'll see that you hit the default 16K limit very soon. You'd better increase this value to something like 512K or even a megabyte.
+If your realpath cache is full, there is no space for other entries, and then PHP will start abusing the `stat()` call because of cache
 misses, stressing your Kernel even more.
 The size is hard to compute theoretically. As we can see from the source code [in here](http://lxr.php.net/xref/PHP_5_5/TSRM/tsrm_virtual_cwd.c#643), each entry consume sizeof(realpath_cache_bucket) + the total number of characters of the resolved path + 1.
 To me (LP64), sizeof(realpath_cache_bucket) = 56 bytes.
@@ -102,9 +102,9 @@ As you can see from the preceding paragraph, better have a cache !
 
 This also shows that priming the cache by hitting few URLs from your website before opening it to public just after a new deploy is important here as well. This will not only prime your OPcode cache, but also the realpath cache, and your Kernel's page cache as well.
 
-How to clear this cache ? The function is hidden in PHP. realpath_cache_clear() ? No, it doesn't exist, too bad :-)
-Welcome *clearstatcache(true)*.
-The true parameter is very important, it is called $clear_realpath_cache, so yes, obviously this is what we want to do.
+How to clear this cache ? The function is hidden in PHP. `realpath_cache_clear()` ? No, it doesn't exist, too bad :-)
+Welcome `clearstatcache(true)`.
+The true parameter is very important, it is named *$clear_realpath_cache*, so yes, obviously this is what we want to do.
 
 ##An example
 
@@ -180,12 +180,12 @@ What we can see, is that the full path to my example PHP file has been resolved,
 Then, as */tmp/bar.php* doesn't exist on my disk, this entry is obviously missing from the cache. However, we can see that PHP
 resolved */tmp*, so it now knows that it can access to /tmp, and any further resolution behind */tmp* will be cheaper than the first one. 
 
-In the array returned by realpath_cache_get(), you can see important information, such as the expires timestamp.
-This has been computed related to the realpath_cache_ttl setting, and the time the file has been accessed.
+In the array returned by `realpath_cache_get()`, you can see important information, such as the expires timestamp.
+This has been computed related to the *realpath_cache_ttl* setting, and the time the file has been accessed.
 The key field is a hash of the resolved path, a variant of [FNV hash](http://www.isthe.com/chongo/tech/comp/fnv/index.html) is used, this
 is an internal information you shouldn't really need though (which may be integer or float, depending on your integer max size).
 
-Now, if you'd call clearstatcache(true), you'd reset this array and force PHP to stat() any new file access that was previously cached.
+Now, if you'd call `clearstatcache(true)`, you'd reset this array and force PHP to `stat()` any new file access that was previously cached.
 
 ##The OPcode caches case
 Ready for another trick ?

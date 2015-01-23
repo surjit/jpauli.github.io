@@ -133,16 +133,17 @@ not a bad thing as you don't use very big memory variables everytime, but cases 
 lots of slots) or a huge string (a result of a file_get_contents() for example).
 
 If you were curious about the duplication of arguments when a function is called, you should have a look at the
-[ZEND_SEND_VAR](http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3182) and [ZEND_SEND_REF](http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3145) opcodes
+[ZEND_SEND_VAR](http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3182) and [ZEND_SEND_REF](http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3145) opcodes.
+The [On PHP function calls](http://jpauli.github.io/2015/01/22/on-php-function-calls.html) article may also be worth reading if you get interested in such concepts.
 
 ##Other use cases
 
 Any mismatch in function calls is bad. This is true also for internal functions, and some of them accept
-parameters by references, like **array_shift()** for example.
+parameters by references, like `array_shift()` for example.
 When you use such functions, make sure to respect the references as well.
 
 But there are other tricks, which I consider not tricks, but just normal and logical behaviors.
-The case of func_get_args() is interesting :
+The case of `func_get_args()` is interesting :
 
 	function foo()
 	{
@@ -160,7 +161,7 @@ The case of func_get_args() is interesting :
 	int(251885904)
 	*/
 
-What you should know is that func_get_args() will duplicate all the passed variables to the function, ignoring references or not.
+What you should know is that `func_get_args()` will duplicate all the passed variables to the function, ignoring references or not.
 It has to do so, because PHP has no way to know if you're gonna modify the variables later-on.
 You all agree that modifying a variable in $args here should not modify the passed arg right ?
 Example:
@@ -176,7 +177,7 @@ Example:
 	
 	// here, $str still owns the string 'bar', and not 'foo'
 
-So PHP has to duplicate every variable passed on the function stack, when you call func_get_args().
+So PHP has to duplicate every variable passed on the function stack, when you call `func_get_args()`.
 
 ##End
 

@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
 <p>We stop here. Just note that depending on the allocation class, the memory area will differ.
 An automatic allocation is done on the stack, a dymanic allocation on the heap and a static is done in the BSS or Data segment of your ELF binary.</p>
 </blockquote>
-<p>Dynamic allocation is really frequently used. PHP uses it as well. It is available through libc's malloc() and free() functions.
+<p>Dynamic allocation is really frequently used. PHP uses it as well. It is available through libc's <code>malloc()</code> and <code>free()</code> functions.
 As PHP is a long-living process, often a daemon (FastCGI or into Apache using mod_php), any leak will hurt not only PHP, but the whole machine.
 As PHP is designed into hundreds of thousands of lines of C code, generating a leak is really really easy. There must be a solution to prevent leaks, and PHP's got a layer that is dedicated in
 dynamic memory management and leak tracking : Zend Memory Manager (ZendMM).</p>
@@ -121,9 +121,9 @@ dynamic memory management and leak tracking : Zend Memory Manager (ZendMM).</p>
 <p><img alt="ZendMM" src="../../../img/php-memory/zendMM.png"></p>
 <h3 id="heap-fragmentation">Heap fragmentation<a href="#heap-fragmentation" class="anchor">#</a></h3>
 <p>To understand heap fragmentation, you should write your own memory manager in C. This is an exercize you usually have to deal with in your studies.
-malloc() manages a heap that it cuts into blocs. When you free a bloc, you create a hole in the heap. As any bloc in the heap is managed into binary trees or linked lists, the more holes you
-create, the more CPU cycles will be needed for the next malloc() call to succeed. It also happens that a call to free() triggers a heap compacting algorithm, which is usually very CPU intensive as well.
-Those are well known problems, and any "serious" software have dealed with them by creating a (usually very complex and big) layer over malloc/free couple, and the program asks for dynamic memory
+<code>malloc()</code> manages a heap that it cuts into blocs. When you free a bloc, you create a hole in the heap. As any bloc in the heap is managed into binary trees or linked lists, the more holes you
+create, the more CPU cycles will be needed for the next <code>malloc()</code> call to succeed. It also happens that a call to <code>free()</code> triggers a heap compacting algorithm, which is usually very CPU intensive as well.
+Those are well known problems, and any "serious" software have dealed with them by creating a (usually very complex and big) layer over malloc/free duo, and the program asks for dynamic memory
 using this specific layer.</p>
 <blockquote>
 <p>As an example, you may read the <a href="http://apr.apache.org/docs/apr/0.9/group__apr__pools.html">Apache server's dynamic memory library</a>. Big projects such as Firefox or MySQL have even more complex and exciting layers.</p>
@@ -202,12 +202,12 @@ It will also implement guards (known as <em>canaries</em>) to inform you if you 
 </ul><p>Zend Memory Manager appeared in PHP4 and has been fully redesigned in PHP5.2.</p>
 <h3 id="configuration">Configuration<a href="#configuration" class="anchor">#</a></h3>
 <p>Zend Memory Manager (ZendMM) is enabled by default, and can be disabled (it will still be here, but skirted). It will however change its behavior depending on your compilation options.
-A debug PHP build will have a ZendMM telling you about leaks on stderr, if report_memleaks=1 in php.ini.</p>
+A debug PHP build will have a ZendMM telling you about leaks on stderr, if <em>report_memleaks=1</em> in php.ini.</p>
 <p><img alt="ZendMM-phpinfo" src="../../../img/php-memory/zendMM-phpinfo.png"></p>
-<p>Then comes four env variables to set up ZendMM at runtime : USE_ZEND_ALLOC, ZEND_MM_MEM_TYPE, ZEND_MM_SEG_SIZE and ZEND_MM_COMPACT.
-If USE_ZEND_ALLOC is set to 0, ZendMM is diabled and any call to its functions will be proxied to the OS's low level call, usually malloc/free. phpinfo() will then tell you Zend Memory Manager is disabled.</p>
-<p>ZEND_MM_MEM_TYPE defines the low level implementation ZendMM should rely on. Default is "malloc", but you can choose between "mmap_anon" - "mmap_zero" - or "win32".</p>
-<p>ZEND_MM_SEG_SIZE defines the allocation step. Its like Kernel's PAGESIZE, the minimum allocation unit to use. Default is 256Kb which is a good value. More on that later.</p>
+<p>Then comes four env variables to set up ZendMM at runtime : <strong>USE_ZEND_ALLOC</strong>, <strong>ZEND_MM_MEM_TYPE</strong>, <strong>ZEND_MM_SEG_SIZE</strong> and <strong>ZEND_MM_COMPACT</strong>.
+If <strong>USE_ZEND_ALLOC</strong> is set to 0, ZendMM is diabled and any call to its functions will be proxied to the OS's low level call, usually malloc/free. <code>phpinfo()</code> will then tell you Zend Memory Manager is disabled.</p>
+<p><strong>ZEND_MM_MEM_TYPE</strong> defines the low level implementation ZendMM should rely on. Default is "malloc", but you can choose between "mmap_anon" - "mmap_zero" - or "win32".</p>
+<p><strong>ZEND_MM_SEG_SIZE</strong> defines the allocation step. Its like Kernel's PAGESIZE, the minimum allocation unit to use. Default is 256Kb which is a good value. More on that later.</p>
 <pre><code>$ USE_ZEND_ALLOC=0 valgrind --tool=memcheck php /tmp/small.php 
 ==6861== Memcheck, a memory error detector
 ==6861== Copyright (C) 2002-2010, and GNU GPL'd, by Julian Seward et al.
@@ -241,12 +241,12 @@ $ valgrind --tool=memcheck ./php /tmp/small.php
 ==6866== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 4 from 4)</code></pre>
 <blockquote>
 <p>Reminder : PHP memory consumption depends on the run script, and also on PHP extensions which can allocate many memory.</p>
-<p>Note : PHP memory consumption is weaker when ZendMM is enabled, and you don't see it but can benchmark it : PHP is faster when ZendMM is enabled. This is obvious, as ZendMM has been designed to fit PHP's memory needs : it preallocates known-size blocs and manages internal lists about them more efficiently than malloc would do. It also prevents many malloc() calls, as the valgrind print above shows.</p>
+<p>Note : PHP memory consumption is weaker when ZendMM is enabled, and you don't see it but can benchmark it : PHP is faster when ZendMM is enabled. This is obvious, as ZendMM has been designed to fit PHP's memory needs : it preallocates known-size blocs and manages internal lists about them more efficiently than malloc would do. It also prevents many <code>malloc()</code> calls, as the valgrind print above shows.</p>
 </blockquote>
 <pre><code>$&gt; ZEND_MM_SEG_SIZE=8k php /tmp/my_script.php</code></pre>
 <p>Here, ZendMM will ask the underneath layer for 8Kb allocs.</p>
-<p>ZEND_MM_MEM_TYPE lets you choose the underneath layer to use. Libc's malloc() is used by default.</p>
-<p>ZEND_MM_COMPACT tells ZendMM the size from which it must compact the internal heap. This feature is not enabled under Unix OSes.</p>
+<p><strong>ZEND_MM_MEM_TYPE</strong> lets you choose the underneath layer to use. Libc's <code>malloc()</code> is used by default.</p>
+<p><strong>ZEND_MM_COMPACT</strong> tells ZendMM the size from which it must compact the internal heap. This feature is not enabled under Unix OSes.</p>
 <h2 id="how-does-zendmm-work">How does ZendMM work ?<a href="#how-does-zendmm-work" class="anchor">#</a></h2>
 <p>ZendMM is an allocator, so its operation is close to any memory allocator. Here are its structures :</p>
 <ul><li>zend_mm_heap : the heap ;</li>
@@ -255,7 +255,7 @@ $ valgrind --tool=memcheck ./php /tmp/small.php
 <li>zend_mm_block / zend_mm_free_block : memory blocs (usefull blocs), pluggued into segments.</li>
 </ul><p>I wont detail too much ZendMM as it may become very complex if you are not comfortable with memory allocators, and such details are useless here.</p>
 <h3 id="noticeable-structures">Noticeable structures<a href="#noticeable-structures" class="anchor">#</a></h3>
-<p>zend_mm_mem_handlers is the low-level allocator to be used by ZendMM, it is then full of function pointers. malloc-based allocator is defined into the ZEND_MM_MEM_MALLOC_DSC macro.</p>
+<p>zend_mm_mem_handlers is the low-level allocator to be used by ZendMM, it is then full of function pointers. malloc-based allocator is defined into the <strong>ZEND_MM_MEM_MALLOC_DSC</strong> macro.</p>
 <pre><code>typedef struct _zend_mm_mem_handlers {
     const char *name;
     zend_mm_storage* (*init)(void *params);
@@ -268,7 +268,7 @@ $ valgrind --tool=memcheck ./php /tmp/small.php
 
 #define ZEND_MM_MEM_MALLOC_DSC {"malloc", zend_mm_mem_dummy_init, zend_mm_mem_dummy_dtor, zend_mm_mem_dummy_compact, zend_mm_mem_malloc_alloc,
 zend_mm_mem_malloc_realloc, zend_mm_mem_malloc_free}</code></pre>
-<p>zend_mm_segment is a memory segment (the base unit ZendMM will use when allocating from the OS). It's size may be changed using the ZEND_MM_SEG_SIZE env. The allocator will use this size to allocate a buffer, place a zend_mm_segment as head and return the leaving buffer which will be itself cut into blocs linked with each other.</p>
+<p>zend_mm_segment is a memory segment (the base unit ZendMM will use when allocating from the OS). It's size may be changed using the <strong>ZEND_MM_SEG_SIZE</strong> env. The allocator will use this size to allocate a buffer, place a zend_mm_segment as head and return the leaving buffer which will be itself cut into blocs linked with each other.</p>
 <pre><code>typedef struct _zend_mm_segment {
     size_t    size;
     struct _zend_mm_segment *next_segment;
@@ -342,11 +342,11 @@ void pefree(void *ptr, char persistent)    void free(void *ptr)</code></pre>
 <p>As you can see, they share the same API as malloc/free/strdup etc... from libc. A quick word on "p" functions. "p" stands for "persitent", this means that the allocation will persist through requests.
 In reality, those "persitent" functions directly proxy to the bottom layer (malloc/free), one should use them for every allocation that is not request bound, meaning that ZendMM won't warn you about possible leaks for them, simply because they can't really leak and will anyway be cleaned when PHP shuts down.</p>
 <h3 id="from-php-land">From PHP land<a href="#from-php-land" class="anchor">#</a></h3>
-<p>PHP allows you, as a PHP developer, to interact with it. Functions memory_get_usage() and memory_get_peak_usage() are published, as well as the ini setting <em>memory_limit</em>.
+<p>PHP allows you, as a PHP developer, to interact with it. Functions <code>memory_get_usage()</code> and <code>memory_get_peak_usage()</code> are published, as well as the ini setting <em>memory_limit</em>.
 As most of dynamic allocation request from PHP go through the ZendMM layer, it is very easy for it to count the number of bytes asked so far, and bail out in case of reaching a limit : the <em>memory_limit</em>.</p>
 <pre><code>zend_mm_safe_error(heap, "Allowed memory size of %ld bytes exhausted (tried to allocate %ld bytes)", heap-&gt;limit, size);</code></pre>
-<p>To know PHP dynamic memory usage at a given moment, memory_get_usage() may be used. This function returns the size used into the allocated segments. This means that it is less than the real usage of PHP.
-To know the real usage, aka the memory to fit the segments in it, pass 1 to the function : memory_get_usage(1);</p>
+<p>To know PHP dynamic memory usage at a given moment, <code>memory_get_usage()</code> may be used. This function returns the size used into the allocated segments. This means that it is less than the real usage of PHP.
+To know the real usage, aka the memory to fit the segments in it, pass 1 to the function : <code>memory_get_usage(1)</code>;</p>
 <pre><code>&lt;?php
 ini_set('memory_limit', -1); // unlimited memory
 
@@ -370,11 +370,11 @@ $&gt; php /tmp/mem.php
 
 10861.83 Kb
 11264.00 Kb</code></pre>
-<p>memory_get_peak_usage() returns the peak ZendMM recorded in its life.</p>
+<p><code>memory_get_peak_usage()</code> returns the peak ZendMM recorded in its life.</p>
 <blockquote>
-<p>Important : Nothing forces the C developers to use ZendMM. Anyone developing an extension (for example) could absolutely not use ZendMM and rely directly on malloc/free, thus allocating dynamic memory that will not be seen by ZendMM and memory_get_usage(), memory_limit etc... Here, you may use your OS to monitor this. Obviously, C developers know that and heavily rely on ZendMM, but still.
+<p>Important : Nothing forces the C developers to use ZendMM. Anyone developing an extension (for example) could absolutely not use ZendMM and rely directly on malloc/free, thus allocating dynamic memory that will not be seen by ZendMM and <code>memory_get_usage()</code>, <em>memory_limit</em> etc... Here, you may use your OS to monitor this. Obviously, C developers know that and heavily rely on ZendMM, but still.
 Also, note that PHP's source code itself uses ZendMM, but sometimes, somewhere, no. Some parts of code use persistent allocs or directly malloc/free.</p>
-<p>That's why memory_get_usage() give an average information, often accurate, but not 100% accurate on a byte-basis. Use your OS for that.</p>
+<p>That's why <code>memory_get_usage()</code> give an average information, often accurate, but not 100% accurate on a byte-basis. Use your OS for that.</p>
 </blockquote>
 <h3 id="tuning">Tuning<a href="#tuning" class="anchor">#</a></h3>
 <h4 id="zend-mm-seg-size-sizing-zendmm-heap-allocations">ZEND_MM_SEG_SIZE, sizing ZendMM heap allocations<a href="#zend-mm-seg-size-sizing-zendmm-heap-allocations" class="anchor">#</a></h4>
@@ -478,8 +478,8 @@ Memory should now have been freed: VmData:    143780 kB</code></pre>
 Original heap status: VmData:         4404 kB
 I'm now eating heap memory: VmData:      152116 kB
 Memory should now have been freed: VmData:      4916 kB</code></pre>
-<p>Aha, seems much better. In this particular case, we've been hit by malloc implementation. When we freed the memory, ZendMM did call free(), but free() itself did not free the memory back to the OS, but prefered keeping the blocks in a heat area to serve them back later. This is good if you don't use an overlay, like ZendMM. But using ZendMM, which itself implements a heat zone an reusage of pointers, it is silly to suffer from libc's malloc implementation details (which may vary a lot depending on how malloc() has been compiled on your system, you should read your system manual to know about this).</p>
-<p>So using mmap_anon, if you know what this is, ZendMM will call munmap(), which is a Kernel service (system call) which will mark the physical pages as freed, thus unpaging them from your process memory image : your memory consumption will then drop.</p>
+<p>Aha, seems much better. In this particular case, we've been hit by malloc implementation. When we freed the memory, ZendMM did call <code>free()</code>, but <code>free()</code> itself did not free the memory back to the OS, but prefered keeping the blocks in a heat area to serve them back later. This is good if you don't use an overlay, like ZendMM. But using ZendMM, which itself implements a heat zone an reusage of pointers, it is silly to suffer from libc's malloc implementation details (which may vary a lot depending on how <code>malloc()</code> has been compiled on your system, you should read your system manual to know about this).</p>
+<p>So using mmap_anon, if you know what this is, ZendMM will call <code>munmap()</code>, which is a Kernel service (system call) which will mark the physical pages as freed, thus unpaging them from your process memory image : your memory consumption will then drop.</p>
 <h2 id="a-quick-word-on-the-garbage-collector">A quick word on the Garbage Collector<a href="#a-quick-word-on-the-garbage-collector" class="anchor">#</a></h2>
 <p>Just to be clear, because we tend to read so many bullshit on the Web about PHP, by people just telling things that are not true... Anyway, let me clarify. Zend Memory Manager has nothing to share with ZendGC. ZendGC, appeared in PHP 5.3, is about clearing circular references in PHP variables and that's absolutely all it does. It then acts on top of ZendMM, for PHP variables containing themselves (circular references). PHP has always freed back the memory when it has not used it anymore, and this is ZendMM role</p>
 <p><img alt="ZendGC" src="../../../img/php-memory/zendgc.png"></p>
@@ -543,10 +543,10 @@ If you have another OS or architecture, the numbers will vary. Also, if you acti
 |             -&gt;19.61% (262,144B) 0x445AA6: main (php_cli.c:1358)
 |               
 -&gt;01.36% (18,191B) in 20 places, all below massif's threshold (01.00%)</code></pre>
-<p>At timeslot 268, we can notice that 1.3Mb have been allocated, of which zend_interned_string_init() uses 1Mb, and _zend_mm_alloc_int() uses 256Kb.
-zend_interned_string_init() is the interned string buffer used for string interning. By default, <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_string.c#43">it is 1Mb size</a> and can only be changed
+<p>At timeslot 268, we can notice that 1.3Mb have been allocated, of which <code>zend_interned_string_init()</code> uses 1Mb, and <code>_zend_mm_alloc_int()</code> uses 256Kb.
+<code>zend_interned_string_init()</code> is the interned string buffer used for string interning. By default, <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_string.c#43">it is 1Mb size</a> and can only be changed
 at PHP compilation.
-_zend_mm_alloc_int() allocated 256Kb, yes, this is our underlying allocator call, to allocate one segment of memory, the very first one (default is 256Kb), PHP is actually starting and we are very soon in that process at timeslot 268.
+<code>_zend_mm_alloc_int()</code> allocated 256Kb, yes, this is our underlying allocator call, to allocate one segment of memory, the very first one (default is 256Kb), PHP is actually starting and we are very soon in that process at timeslot 268.
 Let's keep going :</p>
 <pre><code>--------------------------------------------------------------------------------
   n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
@@ -595,7 +595,7 @@ Let's keep going :</p>
 | |   -&gt;00.73% (13,144B) in 1+ places, all below ms_print's threshold (01.00%)
 | |   
 | -&gt;00.20% (3,504B) in 1+ places, all below ms_print's threshold (01.00%)</code></pre>
-<p>Interesting. At timeslot 307, the snapshot starts showing the famous garbage collector impact. The circular garbage collector, to be able to run and do its job, needs not less than 320Kb of memory, which is not trivial.  php_module_startup() is the call to start every PHP extensions, which will start registering some classes, some functions etc... 48Kb so far</p>
+<p>Interesting. At timeslot 307, the snapshot starts showing the famous garbage collector impact. The circular garbage collector, to be able to run and do its job, needs not less than 320Kb of memory, which is not trivial.  <code>php_module_startup()</code> is the call to start every PHP extensions, which will start registering some classes, some functions etc... 48Kb so far</p>
 <p>Etc... We could detail all the snapshot if you wish to have a full night reading this article ;-)</p>
 <h2 id="end">End<a href="#end" class="anchor">#</a></h2>
 <p>Zend Memory Manager (ZendMM) is a layer sitting on top of every (ideally) PHP heap allocation request. It has been designed to improve PHP performances, as PHP started becoming more and more complex and heap dependent. As you know now, you must compile a debug build of PHP to activate all the interesting parts of ZendMM.</p>

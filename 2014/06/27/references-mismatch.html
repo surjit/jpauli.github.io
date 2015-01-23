@@ -150,13 +150,14 @@ PHP just increments a counter, whereas for any other types, it really duplicates
 not a bad thing as you don't use very big memory variables everytime, but cases happen where you'll carry a big array (with
 lots of slots) or a huge string (a result of a file_get_contents() for example).</p>
 <p>If you were curious about the duplication of arguments when a function is called, you should have a look at the
-<a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3182">ZEND_SEND_VAR</a> and <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3145">ZEND_SEND_REF</a> opcodes</p>
+<a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3182">ZEND_SEND_VAR</a> and <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_vm_def.h#3145">ZEND_SEND_REF</a> opcodes.
+The <a href="http://jpauli.github.io/2015/01/22/on-php-function-calls.html">On PHP function calls</a> article may also be worth reading if you get interested in such concepts.</p>
 <h2 id="other-use-cases">Other use cases<a href="#other-use-cases" class="anchor">#</a></h2>
 <p>Any mismatch in function calls is bad. This is true also for internal functions, and some of them accept
-parameters by references, like <strong>array_shift()</strong> for example.
+parameters by references, like <code>array_shift()</code> for example.
 When you use such functions, make sure to respect the references as well.</p>
 <p>But there are other tricks, which I consider not tricks, but just normal and logical behaviors.
-The case of func_get_args() is interesting :</p>
+The case of <code>func_get_args()</code> is interesting :</p>
 <pre><code>function foo()
 {
     var_dump('Before func_get_args()', memory_get_usage());
@@ -172,7 +173,7 @@ int(151222120)
 string(21) "After func_get_args()"
 int(251885904)
 */</code></pre>
-<p>What you should know is that func_get_args() will duplicate all the passed variables to the function, ignoring references or not.
+<p>What you should know is that <code>func_get_args()</code> will duplicate all the passed variables to the function, ignoring references or not.
 It has to do so, because PHP has no way to know if you're gonna modify the variables later-on.
 You all agree that modifying a variable in $args here should not modify the passed arg right ?
 Example:</p>
@@ -186,7 +187,7 @@ $str = 'bar';
 foo($str);
 
 // here, $str still owns the string 'bar', and not 'foo'</code></pre>
-<p>So PHP has to duplicate every variable passed on the function stack, when you call func_get_args().</p>
+<p>So PHP has to duplicate every variable passed on the function stack, when you call <code>func_get_args()</code>.</p>
 <h2 id="end">End<a href="#end" class="anchor">#</a></h2>
 <p>Well, as I said, usually you don't carry over huge variables in PHP scripts. This is a pretty uncommon use case, however,
 as time pass and we ask PHP to build more and more complex systems, managing more and more data; knowing what happens
