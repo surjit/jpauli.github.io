@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Getting into the Zend Execution engine</title>
+
+    <meta name="description" content="">
+    <meta name="author" content="Julien Pauli">
+    <meta name="viewport" content="width=device-width">
+
+    
+    <link rel="canonical" href="http://jpauli.github.io//2015/02/05/zend-vm-executor.html"/>
+              <link rel="alternate" href="http://jpauli.github.io//feed/atom.xml" type="application/atom+xml" title="Julien Pauli PHP&#039;s life"/>
+      
+        <!-- Latest compiled and minified CSS --><link rel="stylesheet" href="../../../css/bootstrap.min.css"><link rel="stylesheet" href="../../../css/bootstrap-theme.min.css"><link rel="stylesheet" href="http://yandex.st/highlightjs/8.0/styles/pojoaque.min.css">      </head>
+
+  <body>
+          <div class="container">
+                  <div class="page-header">
+            <ul class="list-inline pull-right">
+                                                <li>
+                    <a href="../../../about.html">
+                      About
+                    </a>
+                  </li>
+                                  <li>
+                    <a href="../../../index.html">
+                      Welcome to julien pauli&#039;s page
+                    </a>
+                  </li>
+                                          </ul>
+            <h1>
+              <a href="../../..">
+                Julien Pauli PHP&#039;s life
+              </a>
+            </h1>
+          </div>
+        
+                  <div class="content">
+                                          <h1>
+                  Getting into the Zend Execution engine</h1>
+                          
+              <article>
+    <p class="text-muted">
+      <span class="glyphicon glyphicon-calendar"></span>
+      Feb 5th, 2015
+    </p>
+
+    <div class="body">
+      <h2 id="php-an-interpreted-language">PHP : an interpreted language<a href="#php-an-interpreted-language" class="anchor">#</a></h2>
+<p>PHP is often defined as a "scripting language" or an "interpreted language". What's that ?</p>
+<p>Well, it is a language that won't turn its instructions (its syntax) directly into native machine language, but into an intermediate form, that obviously won't be directly run by the CPU (as this one wouldn't understand the instructions), but by an intermediate code base, itself beeing written using native machine instructions this time (we use the C language for that nowadays).</p>
+<p>That's basically the definition of a <em>software virtual machine</em>. Quoting Wikipedia :</p>
+<blockquote>
+<p>(...) process virtual machines are designed to execute a single computer program by providing an abstracted and platform-independent program execution environment.
+A process VM, sometimes called an application virtual machine, or Managed Runtime Environment (MRE), runs as a normal application inside a host OS and supports a single process. It is created when that process is started and destroyed when it exits. Its purpose is to provide a platform-independent programming environment that abstracts away details of the underlying hardware or operating system, and allows a program to execute in the same way on any platform.</p>
+</blockquote>
+<p>So, the PHP language, like any interpreted language, is a program that is designed to run abstract instructions in a cross platform way, abstracting away as much of the underlying OS details as possible.
+This is technically speaking. It's functional domain is the web (PHP is aimed to solve Web related problems).</p>
+<p>Other programming languages relying on a software virtual machine are (non exhaustive list) : Java, Python, C#, Ruby, Pascal, Lua, Perl, Javascript... (and many more).
+Basically, every language that is not directly and fully turned into native machine instructions, makes use of a software virtual machine.
+Software virtual machines are however allowed - to boost their own performance - to turn some of (but not all) the language instructions they support to direct host machine instructions : this process is called "JIT compilation". PHP does not make use of JIT compilation at the time the lines you are reading are written, but experimentations have been done and such an idea has always been analyzed/talked about.</p>
+<p>We nowadays use software virtual machine because we don't want to write those thousands of C lines of code everytime we want to say "Hello" on the target screen.
+Software virtual machines advantages over native platform programming :</p>
+<ul><li>Ease of use and speed of development</li>
+<li>Very often if not in 100% cases : automatic memory management</li>
+<li>Abstracts target data types, no low level maths to figure out, no code to rewrite when switching target hardware, etc.</li>
+</ul><p>And we could write some drawbacks :</p>
+<ul><li>No accuracy on memory management or more generally of global resources usage (trust the VM or die)</li>
+<li>Slower than native code : more CPU cycles needed to achieve the same task (JIT tries to narrow the gap, but will never make it disappear)</li>
+<li>May abstract too many things, often the programmer is too far from its hardware, which leads to diffculties in understanding the exact impact of the code, especially when the load raises</li>
+</ul><p>The last line of drawbacks is why I write such an article.
+The more the time passes, the more I note this fact : less and less people master the exact impact of the code they write onto the hardware and the network, which in my opinion is not a good thing.
+This often makes me think about someone connecting two wires together, crossing his fingers for the overall system behind him not to blow up. It's not about mastering the whole chain, which is not humanely possible, but at least know what we talk about.</p>
+<p>So, let me try to show you what PHP does with the code you write. And when you'll have that good understanding, you can extract it and apply it to any other "interpreted" programming languages, as those may be designed a little bit differently from PHP, they all share a very huge part of the concepts. Usually, the main differences you'll find studying other interpreted languages is about using JIT or not, parallelism of the VM code (using threads mainly, PHP does not make use of any parallelism technic) and memory pooling / garbage collecting algorithms.</p>
+<h2 id="the-zend-software-virtual-machine">The Zend software virtual machine<a href="#the-zend-software-virtual-machine" class="anchor">#</a></h2>
+<p>The main virtual machine (Zend Virtual Machine) is divided into two huge parts, which are tied together :</p>
+<ul><li>A compile stack : understands and turns the PHP language instructions into an intermediate form of any abstract kind</li>
+<li>An execution stack : takes the intermediate form of code instructions and run them through a dedicated engine, itself written in C or assembly</li>
+</ul><p>We won't talk about part 1 here, but <strong>concentrate on the Zend Virtual machine executor</strong>, a very interesting piece of software, highly optimized, crossplatform, runtime hookable, technically highly challenging. Several thousands of C lines of code are involved in this component design, which is reworked partly at every new PHP version release.</p>
+<p>We'll assume PHP 5.6 for our examples.</p>
+<p>I admit that there are so many things to say, that I had difficulties on where to start, what to show you and in which order for this article. This is a pretty uncommon situation I'm not really used to, but I can't shrink this blog subject into several ones, because all the pieces are really tied together.
+As it is perfectly valid to try understanding the executor without having any knowledge of the compiler, even if those two pieces are narrow bound together; when it comes to dissect the huge executor subject so that you will fully understand every concept, well, it's not that easy.</p>
+<p>So remember, its not bad that you ignore how PHP compiler works, you don't need those details to study the executor part. Perhaps I'll write a further article about the PHP compiler some time in the future ?</p>
+<p>Let's go.</p>
+<h3 id="opcode">OPCode<a href="#opcode" class="anchor">#</a></h3>
+<p>You hear this word very often if you read PHP internals stuff, or my blog posts for example. We must first define an "OPCode".
+Quoting Wikipedia :</p>
+<blockquote>
+<p>Opcodes can also be found in so-called byte codes and other representations intended for a software interpreter rather than a hardware device. These software based instruction sets often employ slightly higher-level data types and operations than most hardware counterparts, but are nevertheless constructed along similar lines.</p>
+</blockquote>
+<p><em>ByteCode</em> and <em>OPCode</em> are two different words of different meanings, but we usually allow swapping them for the same meaning.</p>
+<p>We'll assume that <strong>a Zend VM OPCode is one low level virtual machine operation</strong>.
+The Zend virtual machine contains many OPCodes : it is able to do many things. As PHP evolves, more and more OPCodes are added, because PHP is able to do more and more things.
+You can list all the OPCodes by displaying the content of the <a href="http://lxr.php.net/xref/PHP_5_6/Zend/zend_vm_opcodes.h">Zend/zend_vm_opcodes.h</a> file of the PHP source.</p>
+<p>Usually, an OPCode name is self-describing. Examples :</p>
+<ul><li>ZEND_ADD : Perform a math addition of its two operands</li>
+<li>ZEND_NEW : Create an object (a PHP object)</li>
+<li>ZEND_EXIT : Exit PHP</li>
+<li>ZEND_FETCH_DIM_W : Fetch the dimension of one operand for Writting purpose</li>
+</ul><p>etc... PHP 5.6 owns 167 OPCodes, and we can therefore say that the PHP 5.6 virtual machine executor is able to compute 167 different kinds of operations.</p>
+<p>An OPCode, internally, is reprensented by the <em>zend_op</em> structure:</p>
+<pre><code>struct _zend_op {
+    opcode_handler_t handler; /* The true C function to run */
+    znode_op op1; /* operand 1 */
+    znode_op op2; /* operand 2 */
+    znode_op result; /* result */
+    ulong extended_value; /* additionnal little piece of information */
+    uint lineno;
+    zend_uchar opcode; /* opcode number */
+    zend_uchar op1_type; /* operand 1 type */
+    zend_uchar op2_type; /* operand 2 type */
+    zend_uchar result_type; /* result type */
+};</code></pre>
+<p>When you want to understand an OPCode, you have to <em>think about a simple calculator machine</em> (really): it is fed by two operands (op1 and op2), you ask it to do exactly one operation (handler), and it gives you a result (result), eventually owning a deduction because of an overflow in the maths operation (extended_value).</p>
+<p>That's all, nothing more to add, that is a really easy to understand concept.</p>
+<p>Every Zend VM OPCode works exactly the same way : there is a handler, which is a C function that owns the code to run (like "add", which will basicaly perform a maths "+" operation).
+This handler can use 0, 1 or 2 operands : op1 and op2, and when you run it, it computes something giving you a result, and eventually an additionnal single piece of information (extended_value).</p>
+<p>Let's now see together what the ZEND_ADD OPCode looks like :</p>
+<pre><code>ZEND_VM_HANDLER(1, ZEND_ADD, CONST|TMP|VAR|CV, CONST|TMP|VAR|CV)
+{
+    USE_OPLINE
+    zend_free_op free_op1, free_op2;
+
+    SAVE_OPLINE();
+    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
+        GET_OP1_ZVAL_PTR(BP_VAR_R),
+        GET_OP2_ZVAL_PTR(BP_VAR_R) TSRMLS_CC);
+    FREE_OP1();
+    FREE_OP2();
+    CHECK_EXCEPTION();
+    ZEND_VM_NEXT_OPCODE();
+}</code></pre>
+<p>Abstract the lines you can read above, because they are not even C valid syntax (we'll come back to this later). However, they are not easy to spot.</p>
+<p>Like you can see, <code>fast_add_function()</code> is called in this ZEND_ADD OPCode handler (this is a classical C function stored somewhere), and it is passed the result, op1 and op2.
+Thus, the code that performs the math addition is stored into this <code>fast_add_function()</code>, no need to open this latter.</p>
+<p>At the end, CHECK_EXCEPTION() is called, and ZEND_VM_NEXT_OPCODE(). Let's detail this latter instruction now.</p>
+<h3 id="a-giant-loop">A giant loop<a href="#a-giant-loop" class="anchor">#</a></h3>
+<p>When a PHP script is compiled, its PHP syntax is turned into several OPCodes, following each other. This is the compiler role, and we won't detail it here.</p>
+<p>That means that a PHP script does several things : We talk about a PHP script beeing turned to "an OP array", which is an array of several OPCodes.
+Each OPCode code is ended by ZEND_VM_NEXT_OPCODE(), which tells the executor to fetch the immediately next OPCode, and run it. And so on.</p>
+<p>All this happens in a loop, which is detailed here (a little bit simplified) :</p>
+<pre><code>ZEND_API void execute_ex(zend_execute_data *execute_data TSRMLS_DC)
+{
+    zend_bool original_in_execution;
+    original_in_execution = EG(in_execution);
+    EG(in_execution) = 1;
+
+zend_vm_enter:
+    execute_data = i_create_execute_data_from_op_array(EG(active_op_array), 1 TSRMLS_CC);
+
+    while (1) {
+        int ret;
+
+        if ((ret = execute_data-&gt;opline-&gt;handler(execute_data TSRMLS_CC)) &gt; 0) {
+            switch (ret) {
+                case 1:
+                    EG(in_execution) = original_in_execution;
+                    return;
+                case 2:
+                    goto zend_vm_enter;
+                    break;
+                case 3:
+                    execute_data = EG(current_execute_data);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+    }
+    zend_error_noreturn(E_ERROR, "Arrived at end of main loop which shouldn't happen");
+}</code></pre>
+<p>This is what's called the main <strong>Zend Executor dispatch loop</strong>, a while(true), which executes a handler() function, terminated by an instruction (ZEND_VM_NEXT_OPCODE()) telling to change
+the <em>execute_data-&gt;opline</em> to the next one into the OPArray. Basically, that's a <em>"do operation 1, do operation 2, do operation 3, ..., return and exit"</em> scenario.
+Loops are handled very easilly : instead of incrementing the OPCode to say "go and run the next one", we just say <em>"go and continue running from that specific point"</em> : that's the low level basics
+of a loop, exactly the way machine instructions work at a lower level.</p>
+<h4 id="quick-example">Quick example<a href="#quick-example" class="anchor">#</a></h4>
+<p>Here is an easy example to show the main line :</p>
+<pre><code>&lt;?php
+$a = 8;
+$b = 'foo';
+echo $a + $b;</code></pre>
+<p>This little simple script gets compiled into this OPArray :</p>
+<pre><code>compiled vars:  !0 = $a, !1 = $b
+line     #* I O op                           fetch          ext  return  operands
+-----------------------------------------------------------------------------------
+   2     0  &gt;   ASSIGN                                                   !0, 8
+   3     1      ASSIGN                                                   !1, 'foo'
+   4     2      ADD                                              ~2      !0, !1
+         3      ECHO                                                     ~2
+   5     4    &gt; RETURN                                                   1</code></pre>
+<p><img alt="opcodes" src="../../../img/zend-vm-executor/opcodes.png"></p>
+<p>Everyone is OK with that ? We could interpret it as :</p>
+<ul><li>Assign 8 to $a</li>
+<li>Assign 'foo' to $b</li>
+<li>Add the content of $a and $b into a temp variable "~2"</li>
+<li>Echo the temp variable "~2"</li>
+<li>Return</li>
+</ul><p>You may notice a strange RETURN OPCode, the last one. What's that ? Where does this come from ? Well it is easy.</p>
+<p>Remember the giant while() loop ? This one is infinite : while(1), go back to analyze this simple loop, you'll notice that the only way to finish it is that the handler() function
+returns 1, getting the code into the case 1 of the switch, which holds the 'return' instruction, effectively exiting from the loop.
+The RETURN OPCode does nothing else than returning 1, making the Zend VM Executor dispatch loop end, and return.
+So yes : every script will end with a RETURN OPCode, if not : the loop would be executed infinitely, not a very good idea right ?</p>
+<p>So the PHP compiler has been designed, so that whatever code it compiles, it will end the resulting OP Array with a RETURN statement.
+That is to say that compiling a PHP script which is empty (no code at all), will lead to an OPArray containing one unique OPCode : the ZEND_RETURN OPCode. When it is loaded into the VM execution dispatch loop, this latter executes the only RETURN handler code, making the VM return : your empty PHP script does nothing.</p>
+<h3 id="oparray">OPArray<a href="#oparray" class="anchor">#</a></h3>
+<p>We have used this "OPArray" word many times, let's now define it. We suggested in our usage of this word, that an OPArray is a simple array containing OPCodes to be run sequencialy.
+Something like this :</p>
+<p><img alt="oparray" src="../../../img/zend-vm-executor/oparray-1.png"></p>
+<p>Well, this is not absolutely true, but it's not far from reality.
+Here is an OPArray :</p>
+<pre><code>struct _zend_op_array {
+    /* Common elements */
+    zend_uchar type;
+    const char *function_name;
+    zend_class_entry *scope;
+    zend_uint fn_flags;
+    union _zend_function *prototype;
+    zend_uint num_args;
+    zend_uint required_num_args;
+    zend_arg_info *arg_info;
+    /* END of common elements */
+
+    zend_uint *refcount;
+    zend_op *opcodes;
+    zend_uint last;
+    zend_compiled_variable *vars;
+    int last_var;
+    zend_uint T;
+    zend_uint nested_calls;
+    zend_uint used_stack;
+    zend_brk_cont_element *brk_cont_array;
+    int last_brk_cont;
+    zend_try_catch_element *try_catch_array;
+    int last_try_catch;
+    zend_bool has_finally_block;
+    HashTable *static_variables;
+    zend_uint this_var;
+    const char *filename;
+    zend_uint line_start;
+    zend_uint line_end;
+    const char *doc_comment;
+    zend_uint doc_comment_len;
+    zend_uint early_binding;
+    zend_literal *literals;
+    int last_literal;
+    void **run_time_cache;
+    int  last_cache_slot;
+    void *reserved[ZEND_MAX_RESERVED_RESOURCES];
+};</code></pre>
+<p>As you can see, this is much more things that just a simple array containing OPCodes. This array containing our OPCodes is effectively stored into the zend_op_array structure : at the <em>opcodes</em> index, here :</p>
+<pre><code>struct _zend_op_array {
+    /* ... */
+    zend_op *opcodes; /* Here is the array of OPCodes */
+    /* ... */
+}</code></pre>
+<p>Remember that when the engine compiles a PHP script, the compiler returns an OPArray like this one, this is its only job.</p>
+<p>So, an "OPArray" is not just a classic C array of zend_op (OPCodes), it contains in reality some different statistic informations as well as everything that will help every OPCode to run in the most efficient possible maner : <strong>the executor must be as fast as possible, for the PHP script to take as less time as possible to execute</strong>.</p>
+<p>Let's detail some of those OPArray informations (the most important ones) :</p>
+<ul><li>The current script filename, the line it starts and ends into the PHP script that's been compiled to this OPArray</li>
+<li>Informations about documentation comments : the "/**" in PHP</li>
+<li>A refcount, as the OPArray itself may be shared elsewhere</li>
+<li>A list of compiled variables. Compiled variables are every PHP variable used (dollar something, like $a)</li>
+<li>A list of temporary variables. Temp vars are used to hold temporary results not explicitely used into the PHP script (not accessed by dollar something, but real intermediate data)</li>
+<li>Informations about the try-catch-finally eventually compiled into this OPArray, the executor will need those to perform the right jumps to the right places</li>
+<li>Informations about the break-continue language constructs eventually compiled into this OPArray, the executor will need those to perform the right jumps to the right places</li>
+<li>A list of static variables used, if any. Static variables are specially handled, because they need to retain there info until the very last moment of PHP's life (simplified)</li>
+<li>The literals used. Literals represent every compile-time known value, like when we use the string "foo", or the integer 42</li>
+<li>Runtime cache slots : This is a place where the engine will cache things it knows it will need later.</li>
+</ul><p>Ok, that seems to be many things into this solo structure right ?</p>
+<p>There is something important I didn't tell you : <strong>OPArray structures are used both to compile PHP scripts and PHP user functions</strong> and also everything passed to the <code>eval()</code> PHP language construct.
+When you write a function in PHP, its whole body will itself be turned into its own OPArray, owning itself the compiled variables used in the function body, the try-catch-finally info used in the function body, etc...</p>
+<p>The OPArray structure is the result that the Zend compiler gives when it compiles both a PHP script or a PHP user function/method. That's why you can read informations that seem to be related only to a PHP function, but not to a PHP script : the PHP documentor comment blocks for example.</p>
+<p>So, a PHP script declaring one function, will be compiled as two different OPArrays : one for the main script, and one for the declared function body. If in the main script you call the function you declared, this will emit a ZEND_DO_FCALL OPCode, which role is to stop the current execution, and start running the asked-function own OPArray.</p>
+<p>Ok, back to the point, let's see what our OPArray looks like when it comes to compile our simple little example :</p>
+<pre><code>&lt;?php
+$a = 8;
+$b = 'foo';
+echo $a + $b;</code></pre>
+<p><img alt="oparray" src="../../../img/zend-vm-executor/oparray-compiled.png"></p>
+<p>As you can see from the picture above, this OPArray now contains everything needed for it to be passed into the executor. Every literal used has been compiled into the <em>literals</em> array (you may spot the integer 1, which comes from the ZEND_RETURN opcode compilation, this latter returning 1), every compiled variable used has been stored into <em>vars</em>, and the compiled OPCodes are here.</p>
+<p>The other zend_op_array fields are mainly empty (zeroed), because the script we compiled is very tiny : it doesn't make any function call, it doesn't contain any try-catch structure, or any break-continue. It is not the result of the compilation of a PHP function, but a PHP script. The OPArray would have been different in such cases, with many of its other fields filled.</p>
+<h3 id="zend-vm-variable-types">Zend VM variable types<a href="#zend-vm-variable-types" class="anchor">#</a></h3>
+<p>This is the next concept to understand before analyzing in detail the different OPCode handlers.</p>
+<p>We know every OPCode handler can use up to two operands : op1 and op2. Each operand represent an OPCode "parameter". For example, the ZEND_ASSIGN OPCode takes as first parameter the PHP variable in which you want to store a value, and as second operand the value you want to assign to the PHP variable. Its result is not used.</p>
+<p>The two operands may be of different types, depending what they represent and how they will be used :</p>
+<ul><li>IS_CV      : Compiled Variable : this operand type represents a PHP variable : $something</li>
+<li>IS_VAR     : Internal VM usage variable that can be reused through other OPCodes, very similar to a $php_variable, but for internal VM usage only</li>
+<li>IS_TMP_VAR : Internal VM usage variable that can not be reused through other OPCodes</li>
+<li>IS_CONST   : Represents a constant value, frozen, immutable, read-only</li>
+<li>IS_UNUSED  : There is no value : the operand holds nothing of interest, ignore it and don't try to read/fetch it</li>
+</ul><p>This type specification is important as <strong>it plays a big role in performance and memory management of the overall executor</strong>.
+When an OPCode handler wants to fetch(read) the information about one of its operand, it won't run the same code to fetch it : it will run some specialized fetch code depending on the operand type.</p>
+<p>Why ? For example, when an OPCode handler wants to fetch an operand (op1 or op2) of type IS_CV, representing a true PHP $variable, it will at the very first time lookup into the symbol table, storing every possible declared variable. But when it finishes the read, assuming this one succeeds, as it is a Compiled Variable, it is very very likely that one of the next OPCode to be run in the same OPArray will ask as well to fetch this piece of information. So the first fetch caches the pointer result into the OPArray so that any further fetch of this variable value will be much more quick than the very first one.</p>
+<p>This was an explanation for IS_CV, but the same applies for every specialized type : we can optimize every access to every OPCode handler operands if we know information about their type (is it shared ? does it need to be freed ?).</p>
+<p>Now I'm going to detail when the PHP compiler will use each type, for a very simple addition case :</p>
+<pre><code>&lt;?php
+$a + $b; // IS_CV + IS_CV
+1 + $a;  // IS_CONST + IS_CV
+foo() + 3 // IS_VAR + IS_CONST
+!$a + 3;  // IS_TMP + IS_CONST (2 opcodes involved here, but only one showed)</code></pre>
+<h3 id="opcode-specialized-handlers">OPCode specialized handlers<a href="#opcode-specialized-handlers" class="anchor">#</a></h3>
+<p>Now we know that each OPCode handler - accepting up to 2 operands (params) - may fetch those operands value in many different ways depending on their type.
+If each OPCode handler would have to make a switch() on its two operands, to run a special fetch code depending on their type, we would highly drop performance, because the CPU would have to branch off routines at each OPCode handler run that could not be optimized, because of the highly changing-dynamic nature of them.</p>
+<p>Something like this, will just not work in term of performance (pseudo code simplified) :</p>
+<pre><code>int ZEND_ADD(zend_op *op1, zend_op *op2)
+{
+    void *op1_value;
+    void *op2_value;
+
+    switch (op1-&gt;type) {
+        case IS_CV:
+            op1_value = read_op_as_a_cv(op1);
+        break;
+        case IS_VAR:
+            op1_value = read_op_as_a_var(op1);
+        break;
+        case IS_CONST:
+            op1_value = read_op_as_a_const(op1);
+        break;
+        case IS_TMP_VAR:
+            op1_value = read_op_as_a_tmp(op1);
+        break;
+        case IS_UNUSED:
+            op1_value = NULL;
+        break;
+    }
+    /* ... same thing to do for op2 .../
+
+    /* do something with op1_value and op2_value (perform a math addition ?) */
+}</code></pre>
+<p>Remember, we are designing an OPCode handler, <strong>which could be called thousands of time in a PHP script</strong>. If for each call, we must analyze the
+op1 and op2 type, just to run a different fetch/read code, that would not be very nice in term of performance (not dramatic, but still).</p>
+<p>A pretty nice solution instead have been developped.</p>
+<p>Remember the ZEND_ADD OPCode definition from the source code ? :</p>
+<pre><code>ZEND_VM_HANDLER(1, ZEND_ADD, CONST|TMP|VAR|CV, CONST|TMP|VAR|CV)
+{
+    USE_OPLINE
+    zend_free_op free_op1, free_op2;
+
+    SAVE_OPLINE();
+    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
+        GET_OP1_ZVAL_PTR(BP_VAR_R),
+        GET_OP2_ZVAL_PTR(BP_VAR_R) TSRMLS_CC);
+    FREE_OP1();
+    FREE_OP2();
+    CHECK_EXCEPTION();
+    ZEND_VM_NEXT_OPCODE();
+}</code></pre>
+<p>Look at the signature of this strange function that is not even some C valid syntax (and thus cant be compiled as-is by a C compiler).</p>
+<pre><code>ZEND_VM_HANDLER(1, ZEND_ADD, CONST|TMP|VAR|CV, CONST|TMP|VAR|CV)</code></pre>
+<p>This tells that the OPCode handler ZEND_ADD, may accept an op1 of type CONST or TMP or VAR or CV. Same for op2.</p>
+<p>Now, here is the magical stuff : the file this code is written in, <a href="http://lxr.php.net/xref/PHP_5_6/Zend/zend_vm_def.h">zend_vm_def.h</a> , is just a template, that is passed into a processor, which will produce some C valid code (this time) for every handler, <strong>for every combinaison of every operand type</strong>.</p>
+<p>Maths ? 5 different types for op1 multiplied by 5 different types for op2 : ZEND_ADD will be declined as 25 different sepcialized handler functions, and those ones will be written into a file that will itself be compiled as part of the PHP source code.</p>
+<p>This file is named <a href="http://lxr.php.net/xref/PHP_5_6/Zend/zend_vm_execute.h">zend_vm_execute.h</a>, and be carefull as you may have guessed : <strong>it is horribly huge</strong>.</p>
+<p>Maths ? We support 167 OPCodes as of PHP5.6 , imagine all those 167 OPCode handlers accept the full 5 possible combinaisons for both their op1 and op2 ...
+That gives 4175 C functions to store into this file.</p>
+<p>In fact, every OPCode handler will not accept the 5 different possible types of operands, and will lead to less specialized declinations.
+For example :</p>
+<pre><code>ZEND_VM_HANDLER(84, ZEND_FETCH_DIM_W, VAR|CV, CONST|TMP|VAR|UNUSED|CV)</code></pre>
+<p>ZEND_FETCH_DIM_W (fetch a composite entity (array/object) dimension for writing) accepts as op1 only 2 kind : IS_VAR or IS_CV.</p>
+<p>But <em>zend_vm_execute.h</em> still counts about 45.000 lines of C code.</p>
+<p>So to sum up :</p>
+<ul><li><em>zend_vm_def.h</em> is not valid C file. It describes every OPCode handler flavour (using a custom syntax not far from C), depending on both their op1 and op2 possible types, with a maximum of 5 different type for each operand</li>
+<li><em>zend_vm_def.h</em> is passed to a <a href="http://lxr.php.net/xref/PHP_5_6/Zend/zend_vm_gen.php">PHP script called zend_vm_gen.php</a>, stored into the PHP source code, and this file will analyze the special syntax of <em>zend_vm_def.h</em>, using many regular expression matching, and will produce at the end, the final <em>zend_vm_execute.h</em> file you need.</li>
+<li><em>zend_vm_def.h</em> is then not part of the PHP compilation process (this file is obviously excluded when it comes to compile PHP)</li>
+<li><em>zend_vm_execute.h</em> is the result of the parsing of <em>zend_vm_def.h</em>, and holds valid C syntax, it represents the middle heart of the PHP VM executor : every OPCode handler specialization function is stored into it</li>
+<li>When you compile PHP from git, we provide a <em>zend_vm_execute.h</em>, but if you want to hack, and for example add a new OPCode or modify an existing OPCode behavior, you'll have to hack zend_vm_def.h, and regenerate <em>zend_vm_execute.h</em> from it.</li>
+</ul><blockquote>
+<blockquote>
+<p>The funny fact : PHP Virtual Machine Executor is generated using the PHP language itself, aha !</p>
+</blockquote>
+</blockquote>
+<p>Here is an example :</p>
+<p>We define in <em>zend_vm_def.h</em> the ZEND_ADD OPCode, as this :</p>
+<pre><code>ZEND_VM_HANDLER(1, ZEND_ADD, CONST|TMP|VAR|CV, CONST|TMP|VAR|CV)</code></pre>
+<p>Passing <em>zend_vm_def.h</em> to the <em>zend_vm_gen.php</em> script, will result into a new <em>zend_vm_execute.h</em> file, which will contain the specialized handlers for this OPCode, and those look like this :</p>
+<pre><code>static int ZEND_FASTCALL  ZEND_ADD_SPEC_CONST_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS) { /* handler code */ }
+static int ZEND_FASTCALL  ZEND_ADD_SPEC_CONST_TMP_HANDLER(ZEND_OPCODE_HANDLER_ARGS) { /* handler code */ }
+static int ZEND_FASTCALL  ZEND_ADD_SPEC_CONST_VAR_HANDLER(ZEND_OPCODE_HANDLER_ARGS) { /* handler code */ }
+static int ZEND_FASTCALL  ZEND_ADD_SPEC_CONST_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS) { /* handler code */ }
+static int ZEND_FASTCALL  ZEND_ADD_SPEC_TMP_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS) { /* handler code */ }
+static int ZEND_FASTCALL  ZEND_ADD_SPEC_TMP_TMP_HANDLER(ZEND_OPCODE_HANDLER_ARGS)  { /* handler code */ }
+
+/* etc... I won't write here the 25 declinations ! */</code></pre>
+<p>So, the specialized handler will be run depending on the op1 and op2 types, for example :</p>
+<pre><code>&lt;?php
+$a + 2;  /* IS_CV + IS_CONST */
+
+/* ZEND_ADD_SPEC_CV_CONST_HANDLER() will be run in the VM */</code></pre>
+<p>The function name is built dynamically, following this simple model : <em>ZEND_{OPCODE-NAME}<em>SPEC</em>{OP1<em>TYPE}</em>{OP2_TYPE}_HANDLER()</em></p>
+<p>You may wonder then : but if we must choose which specialized function to run for each op1 and op2 types, won't we end up having a huge switch to make such a choice, cancelling the need to have specialized handlers ?</p>
+<p>The answer is no : <em>this is resolved at compile time</em> , and as you use an OPCode cache, you won't suffer from the compile time at all.</p>
+<p>When the PHP compiler generates OPCodes from the source PHP code, it knows for each of them, which type they have (as it is a compiler, it is its role). So the PHP compiler generates an OPArray directly storing the right specialized handler : the execution step has absolutely no choice, no switch() to do : it will be fast, using directly the right specialized handler for each OPCode to run.</p>
+<p>Why not see the difference between those handlers ?</p>
+<p>Not surprisingly, the only thing that changes in each declination of a same handler, is the way op1 and op2 are fetched. Look :</p>
+<pre><code>static int ZEND_FASTCALL  ZEND_ADD_SPEC_CONST_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS) /* CONST_CONST */
+{
+    USE_OPLINE
+    SAVE_OPLINE();
+    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
+        opline-&gt;op1.zv, /* fetch op1 value */
+        opline-&gt;op2.zv TSRMLS_CC); /* fetch op2 value */
+    CHECK_EXCEPTION();
+    ZEND_VM_NEXT_OPCODE();
+}
+
+static int ZEND_FASTCALL  ZEND_ADD_SPEC_CV_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS) /* CV_CV */
+{
+    USE_OPLINE
+    SAVE_OPLINE();
+    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
+        _get_zval_ptr_cv_BP_VAR_R(execute_data, opline-&gt;op1.var TSRMLS_CC), /* fetch op1 value */
+        _get_zval_ptr_cv_BP_VAR_R(execute_data, opline-&gt;op2.var TSRMLS_CC) TSRMLS_CC); /* fetch op2 value */
+    CHECK_EXCEPTION();
+    ZEND_VM_NEXT_OPCODE();
+}</code></pre>
+<p>In the CONST_CONST handler (both op1 and op2 are CONST vars), we read them directly using the operand zval value. There is nothing to do such as incrementing or decrementing a counter, freeing the operand value : the value is immutable, simple read, and that's it.</p>
+<p>However, for the CV_CV handler, we must access the value, increment its refcount (because we're gonna use it now) and cache the access for an eventual further read : <code>_get_zval_ptr_cv_BP_VAR_R()</code> does that.
+And as it is a "R" fetch : for reading, if the variable doesn't exist, this function will generate a notice : undefined variable. Things would have been different for a "W" access, where if the variable doesn't exist, well, we just need to create it without any warning or notice, isn't that how PHP works ? ;-)</p>
+<h3 id="additionnal-informations">Additionnal informations<a href="#additionnal-informations" class="anchor">#</a></h3>
+<h4 id="compiler-optimizations">Compiler optimizations<a href="#compiler-optimizations" class="anchor">#</a></h4>
+<p>The <em>zend_vm_gen.php</em> may sometimes generate some strange code in <em>zend_vm_execute.h</em>. For example :</p>
+<pre><code>static int ZEND_FASTCALL  ZEND_INIT_ARRAY_SPEC_CONST_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
+{
+    USE_OPLINE
+
+    array_init(&amp;EX_T(opline-&gt;result.var).tmp_var);
+    if (IS_CONST == IS_UNUSED) {
+        ZEND_VM_NEXT_OPCODE();
+#if 0 || IS_CONST != IS_UNUSED
+    } else {
+        return ZEND_ADD_ARRAY_ELEMENT_SPEC_CONST_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS_PASSTHRU);
+#endif
+    }
+}</code></pre>
+<p>You may read silly statements : <em>if (IS_CONST == IS_UNUSED)</em> for example, or again : <em>#if 0 || IS_CONST != IS_UNUSED</em></p>
+<p>This is because the original zend_vm_def.h template code that's been passed for generation of this speciliazed handler, have been written
+in such a way, have a look at it :</p>
+<pre><code>ZEND_VM_HANDLER(71, ZEND_INIT_ARRAY, CONST|TMP|VAR|UNUSED|CV, CONST|TMP|VAR|UNUSED|CV)
+{
+    USE_OPLINE
+
+    array_init(&amp;EX_T(opline-&gt;result.var).tmp_var);
+    if (OP1_TYPE == IS_UNUSED) {
+        ZEND_VM_NEXT_OPCODE();
+#if !defined(ZEND_VM_SPEC) || OP1_TYPE != IS_UNUSED
+    } else {
+        ZEND_VM_DISPATCH_TO_HANDLER(ZEND_ADD_ARRAY_ELEMENT);
+#endif
+    }
+}</code></pre>
+<p>When the generator generated code for each specializer, it replaced the <em>OP1_TYPE</em> statement in the code above by each type, generating strange statements, such as <em>if (IS_CONST == IS_UNUSED)</em></p>
+<p>But remember, the generated code in <em>zend_vm_execute.h</em> is compiled by a C compiler, and this one will optimize those useless statement by just making them dissapear, resulting in each OPCode handler beeing highly optimized when turned to machine code by the C compiler , like this :</p>
+<pre><code>static int ZEND_FASTCALL  ZEND_INIT_ARRAY_SPEC_CONST_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
+{
+    array_init(&amp;EX_T(opline-&gt;result.var).tmp_var);
+}</code></pre>
+<h4 id="zend-vm-executor-generation-customization">Zend VM executor generation customization<a href="#zend-vm-executor-generation-customization" class="anchor">#</a></h4>
+<p>The script that generates the VM executor is <em>zend_vm_gen.php</em>, and this one accepts parameters, that means that you can change your PHP current executor code by generating another one. For example, when you pass <em>--without-specializer</em> to this script, it generates a VM executor with no specializers. That means that each OPCode handler will have only one declination (whatever its op1 and op2 types are), and this one will effectively do a big switch() on each operand op1/op2 type when trying to fetch its value :</p>
+<pre><code>static int ZEND_FASTCALL  ZEND_ADD_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
+{
+    USE_OPLINE
+    zend_free_op free_op1, free_op2;
+
+    SAVE_OPLINE();
+    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
+        get_zval_ptr(opline-&gt;op1_type, &amp;opline-&gt;op1, execute_data, &amp;free_op1, BP_VAR_R),
+        get_zval_ptr(opline-&gt;op2_type, &amp;opline-&gt;op2, execute_data, &amp;free_op2, BP_VAR_R) TSRMLS_CC);
+    FREE_OP(free_op1);
+    FREE_OP(free_op2);
+    CHECK_EXCEPTION();
+    ZEND_VM_NEXT_OPCODE();
+}
+
+static inline zval *_get_zval_ptr(int op_type, const znode_op *node, const zend_execute_data *execute_data, zend_free_op *should_free, int type TSRMLS_DC)
+{
+/*    should_free-&gt;is_var = 0; */
+    switch (op_type) {
+        case IS_CONST:
+            should_free-&gt;var = 0;
+            return node-&gt;zv;
+            break;
+        case IS_TMP_VAR:
+            should_free-&gt;var = TMP_FREE(&amp;EX_T(node-&gt;var).tmp_var);
+            return &amp;EX_T(node-&gt;var).tmp_var;
+            break;
+        case IS_VAR:
+            return _get_zval_ptr_var(node-&gt;var, execute_data, should_free TSRMLS_CC);
+            break;
+        case IS_UNUSED:
+            should_free-&gt;var = 0;
+            return NULL;
+            break;
+        case IS_CV:
+            should_free-&gt;var = 0;
+            return _get_zval_ptr_cv(node-&gt;var, type TSRMLS_CC);
+            break;
+        EMPTY_SWITCH_DEFAULT_CASE()
+    }
+    return NULL;
+}</code></pre>
+<p>Why do that ? For debugging and understanding purposes. The <em>zend_vm_execute.h</em> file resulting, with no specializer at all, is 10 times smaller in number of lines that the one with each specializer.
+However, when you run some PHP code against this VM executor, it shows something like 10 to 15% performance drop compared to the one with specializers.</p>
+<blockquote>
+<blockquote>
+<p>Zend VM executor specializers have been added to PHP 5.1 (2005)</p>
+</blockquote>
+</blockquote>
+<p>Another switch is <em>--with-vm-kind=CALL|SWITCH|GOTO</em>.  CALL beeing the default value.</p>
+<p>Remember the main executor while(1) loop we talked about when we introduced the VM ? I refresh your mind rewriting it here :</p>
+<pre><code>ZEND_API void execute_ex(zend_execute_data *execute_data TSRMLS_DC)
+{
+    zend_bool original_in_execution;
+    original_in_execution = EG(in_execution);
+    EG(in_execution) = 1;
+
+zend_vm_enter:
+    execute_data = i_create_execute_data_from_op_array(EG(active_op_array), 1 TSRMLS_CC);
+
+    while (1) {
+        int ret;
+
+        if ((ret = execute_data-&gt;opline-&gt;handler(execute_data TSRMLS_CC)) &gt; 0) {
+            switch (ret) {
+                case 1:
+                    EG(in_execution) = original_in_execution;
+                    return;
+                case 2:
+                    goto zend_vm_enter;
+                    break;
+                case 3:
+                    execute_data = EG(current_execute_data);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+    }
+    zend_error_noreturn(E_ERROR, "Arrived at end of main loop which shouldn't happen");
+}</code></pre>
+<p>This is the CALL strategy, it increments a pointer in execute_data-&gt;opline at the end of each OPCode handler, and goes back to the next iteration of the while(1). This is how we go from one OPcode to the next one, until the ZEND_RETURN one.</p>
+<p>There exists other strategies to achieve the same goeal. Why not use a C goto ? Or a giant C switch ?</p>
+<p>This is <em>--with-vm-kind</em> role : it generates 3 different executor control flow strategies. Let's see the C goto one :</p>
+<pre><code>zend_vm_enter:
+        execute_data = i_create_execute_data_from_op_array(EG(active_op_array), 1 TSRMLS_CC);
+
+    LOAD_REGS();
+    LOAD_OPLINE();
+
+    while (1) {
+        goto *(void**)(execute_data-&gt;opline-&gt;handler);
+    }</code></pre>
+<p>You see that the while(1) is still here, but in the while this time, we goto a function pointer. So for one OPCode handler to give hand to the next one, we will have this time to increment a pointer and use a goto as well :</p>
+<pre><code>#define ZEND_VM_INC_OPCODE() execute_data-&gt;opline++
+#define ZEND_VM_CONTINUE() goto *(void**)(OPLINE-&gt;handler) /* here is the goto */
+#define ZEND_VM_NEXT_OPCODE() \
+CHECK_SYMBOL_TABLES() \
+ZEND_VM_INC_OPCODE(); \
+ZEND_VM_CONTINUE()</code></pre>
+<p>CALL is the default strategy for the Zend Executor dispatch loop, because its the one that gives the more performance on an average of target platforms and C compilers. However, depending on your platform and C compiler specific feature, you may find better performance for other implementations, like the goto one, which can be written using specific assembly instructions on some CPU families.</p>
+<h4 id="executor-jumps">Executor jumps<a href="#executor-jumps" class="anchor">#</a></h4>
+<p>What happens when you use an <em>if</em> statement in PHP ? It is easy : instead of using ZEND_VM_NEXT_OPCODE() and linearly running each OPCode one after one - which prevents us from taking control over the executor path, and thus to implement ifs or loops - we just <strong>jump</strong> to a specific OPCode.</p>
+<pre><code>&lt;?php
+$a = 8;
+if ($a == 9) {
+    echo "foo";
+} else {
+    echo "bar";
+}
+
+compiled vars:  !0 = $a
+line     #* I O op                           fetch          ext  return  operands
+-----------------------------------------------------------------------------------
+   3     0  &gt;   ASSIGN                                                   !0, 8
+   5     1      IS_EQUAL                                         ~1      !0, 9
+         2    &gt; JMPZ                                                     ~1, -&gt;5
+   6     3  &gt;   ECHO                                                     'foo'
+   7     4    &gt; JMP                                                      -&gt;6
+   8     5  &gt;   ECHO                                                     'bar'
+  10     6  &gt; &gt; RETURN                                                   1</code></pre>
+<p>Notice those ZEND_JMP and ZEND_JMPZ OPCodes ? They just change the control flow :</p>
+<pre><code>static int ZEND_FASTCALL  ZEND_JMP_SPEC_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
+{
+    USE_OPLINE
+    ZEND_VM_SET_OPCODE(opline-&gt;op1.jmp_addr);
+    ZEND_VM_CONTINUE();
+}</code></pre>
+<p>ZEND_VM_SET_OPCODE tells the executor main loop not to basically increment the opline to go and run the immediately next OPCode, but instead to jump the opline to the jump address (jmp_addr) stored into operand op1 of the ZEND_JMP OPCode handler.
+This value has been calculated at compile time.</p>
+<h2 id="conclusions">Conclusions<a href="#conclusions" class="anchor">#</a></h2>
+<p>This article demonstrated some deep hidden parts of the Zend virtual machine : the executor code. This is the part of PHP source code that makes the "real" job : it executes each single task (each OPCode) the PHP script has been translated to. <strong>This is the most performance critical part of PHP's source code, so it has been designed with perf in mind first</strong>.</p>
+<p>That's why when you read this code and you are not really used to software virtual machine design or even low level programming, you may sometimes wonder why things have been written in such a way, that seems so complex to you. The only answer is performance. The C programming language is the only one, to my own knowledge, that allows that many thin level of optimizations, as it is directly turned into target machine assembly instructions, and its compilers are nowadays very mature, as most of them are about 40 years old.</p>
+<p>Remember that the PHP virtual machine, as well as its whole source code in fact, has been worked, hacked, debugged and optimized for nearly 20 years now, so believe me, if things are done the way they are, it's not random decisions at all.
+It even happens we dive one layer lower, and read the assembly code that's been generated by different C compilers when compiling the executor, and then hack the C code to make the compiler generate even more optimized code (the C compiler can usually be told many tweaks). Also, some critical parts of the Zend virtual machine are written directly in assembly (uncommon, but still happens).</p>
+<p>Finally, you can play with that yourself : you must design a Zend_extension. A PHP extension can also do many things, but when it comes to play with the executor and the OPArrays, it is better to do that in a zend_extension, because those have much more power than classical PHP extensions.
+For exemple OPCache is a zend_extension, because it plays heavilly with the OPCodes in the OPArray, mainly to both optimize them (finding unreachable statement etc... using what's called compiler passes) and cache them to be able to reuse them at the next request, preventing the so heavy compiler to fire up.</p>
+    </div>
+
+      </article>
+          </div>
+        
+                          <footer>
+            <p class="text-center">
+              &copy;
+                              <a href="http://jpauli.github.io/">
+                  Julien Pauli
+                </a>
+                            2015
+              <small>
+                with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
+              </small>
+            </p>
+          </footer>
+        
+      </div>
+    
+    
+              <script src="../../../js/jquery-2.1.0.min.js"></script>
+      <script src="../../../js/bootstrap.min.js"></script>
+      <script src="http://yandex.st/highlightjs/8.0/highlight.min.js"></script>
+      <script>hljs.initHighlightingOnLoad();</script>
+    
+      </body>
+</html>
