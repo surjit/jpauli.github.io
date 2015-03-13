@@ -857,10 +857,11 @@ line     #* I O op                           fetch          ext  return  operand
 <p>The compiler here once again has to delay the class declaration at runtime (something PHP allows), and believe me that class declaration is heavy for the engine, what is heavy is resolving the inheritence tree and add all the functions of all the parents to the actual class, something usually taking some compiler time, but not in our case : it will eat runtime, over, and over , and over again, for a class that will likely never change. What a silly code writing in a performance point of view.</p>
 <p>Here, like always, we suffer from the very dynamic nature of PHP, allowing to use an object of a class that it has even not compiled yet ! (autoloaded ?). This is flexible, this is easy to program, but your machine will pay the price of your laziness, as often. Until you use and OPCode cache, particularly OPCache, which optimizes very nicely such cases (and I still have some PR to improve even more this specific case).</p>
 <blockquote>
-<p>Note that this process also happens for both traits binding, and interface implementations, as internally, classes/traits/interfaces are exactly the same structure.</p>
+<p>Note that this process also happens for both traits binding, and interface implementations, as internally, classes/traits/interfaces are exactly the same structure and share many processes.</p>
 </blockquote>
 <p>Still not convinced ?</p>
 <pre><code>&lt;?php
+
 class Foo { }
 
 compiled vars:  none
