@@ -119,10 +119,10 @@ Measure on your side and size it accordingly.</p>
 <p>Here we go to detail how the caching mechanism works.</p>
 <p>The overall idea is to copy into shared memory (shm) every pointer data that will vary from request to request.
 After, once loading back the same script : restore every pointer data from shared memory to standard process memory, tied to the current request.
-As PHP frees its memory from one request to another, OPCache must not leave one single pointer allocated onto this pool.</p>
-<p>This memory model is used to prevent locks at maximum. We'll go back to locks in a later subject, but basically, we do operations all at once, before runtime, so that during the runtime of the script, OPCache has nothing more to do.</p>
+When the PHP compiler is working, it uses Zend Memory Manager to allocate every pointer. This kind of memory used is request bound, and Zend Memory Manager will automaticaly attempt to free it as soon as the current request finishes. OPCache's job is to browse every structure returned by the PHP compiler, and not leave one single pointer allocated onto this pool, but copy it into a shared memory allocated pool.</p>
+<p>This memory model is used to prevent locks at maximum. We'll go back to locks in a later subject, but basically, OPCache does its job all at once, before runtime, so that during the runtime of the script, OPCache has nothing more to do.</p>
 <p>OPCache hooks into the compiler, and replaces the structure this latter should fill-in while compiling PHP scripts, by its own.
-It then makes the compiler fills a persistent_script structure, instead of it filling directly the Zend Engine tables and internal structures (which are bound to the current request and will be destroyed at the end of it).</p>
+It then makes the compiler fills a persistent_script structure, instead of it filling directly the Zend Engine tables and internal structures.</p>
 <p>Here is a <code>persistent_script</code> structure :</p>
 <pre><code>typedef struct _zend_persistent_script {
     ulong          hash_value;
@@ -192,7 +192,7 @@ CG(active_op_array) = orig_active_op_array;
 CG(function_table) = orig_function_table;
 EG(class_table) = CG(class_table) = orig_class_table;
 EG(user_error_handler) = orig_user_error_handler;</code></pre>
-<p>As we can see, the PHP compiler is fully isolated and disconnected from the tables it usually fills : it will now fill the persistent_script structures. Here are the item OPCache is interested in, and will need to cache into shared memory :</p>
+<p>As we can see, the PHP compiler is fully isolated and disconnected from the tables it usually fills : it will now fill the persistent_script structures. Then OPCache will have to browse those structures, and replace request allocated pointers to shm ones. OPCache is interested in :</p>
 <ul><li>The script functions</li>
 <li>The script classes</li>
 <li>The script main OPArray</li>
@@ -200,14 +200,14 @@ EG(user_error_handler) = orig_user_error_handler;</code></pre>
 <li>The script structure itself</li>
 </ul><p><img alt="opcache-shm-detailed" src="../../../img/opcache/opcache-shm-detailed.png"></p>
 <p>The compiler is also told some options to disable some optimizations it does, like <code>ZEND_COMPILE_NO_CONSTANT_SUBSTITUTION</code> and <code>ZEND_COMPILE_DELAYED_BINDING</code>. That would add more work to OPCache. Remember that OPCache hooks into the Zend Engine, it is not a source code patch.</p>
-<p>Now that we have a persitent_script structure, we must cache its informations. Remember that the PHP Compiler has filled-in our structures, but it allocated the memory behind this using the standard memory manager : this memory will be freed at the end of the current request. We then need to browse this memory, and copy all of it into the shared memory segment, so that the informations we just gathered will now persist through several requests.</p>
+<p>Now that we have a persitent_script structure, we must cache its informations. Remember that the PHP Compiler has filled-in our structures, but it allocated the memory behind this using the Zend Memory Manager : this memory will be freed at the end of the current request. We then need to browse this memory, and copy all of it into the shared memory segment, so that the informations we just gathered will now persist through several requests.</p>
 <p>The process is as follow :</p>
 <ul><li>Take the PHP script to cache, and compute every variable data size (every pointer target)</li>
 <li>Allocate into shared memory one big block of this precise size</li>
 <li>Iterate over the PHP script variable structures, and for each variable-data pointer target, copy it into the just-allocated shared memory block</li>
 <li>Do the exact opposite for script loading, when this comes to play.</li>
 </ul><p>So OPCache is clever about shared memory, and will not fragment it by freeing it and compacting it.
-For every script, it computes the exact size this script needs to store informations into shared memory, and then copies the data into the segment. <strong>The memory is never freed nor given back to OPCache</strong> , thus the memory is perfectly aligned and never fragmented. This gives a big boost in performance of shared memory, as there is no linked-list to store and traverse when managing memory that can be freed (like malloc/free do). OPcache keeps storing things into the shared memory segment, and when the data become stale (because of script revalidation) : it does not free the buffers but mark them as "wasted". When the max wasted percentage is reached, OPCache triggers a restart. This model is very different from APC, for example, and has the big advantage of providing the same performances as time runs, because the memory buffer from SHM is never managed (freed, compacted, etc...), memory management operations are trully technically stuff which brings nothing to functionnalities, but performance penalty. <strong>OPCache has been designed with highest possible performance in mind</strong>.</p>
+For every script, it computes the exact size this script needs to store informations into shared memory, and then copies the data into the segment. <strong>The memory is never freed nor given back to OPCache</strong> , thus the memory is perfectly aligned and never fragmented. This gives a big boost in performance of shared memory, as there is no linked-list to store and traverse when managing memory that can be freed (like malloc/free do). OPcache keeps storing things into the shared memory segment, and when the data become stale (because of script revalidation) : it does not free the buffers but mark them as "wasted". When the max wasted percentage is reached, OPCache triggers a restart. This model is very different from APC, for example, and has the big advantage of providing the same performances as time runs, because the memory buffer from SHM is never managed (freed, compacted, etc...), memory management operations are trully technically stuff which brings nothing to functionnalities, but performance penalty. <strong>OPCache has been designed with highest possible performance in mind</strong>, not touching back the shared memory segment provides as well a very good rate of CPU caches hits (especially L1 and L2, as OPCache also aligns the memory pointers for them to fit in an L1/L2 line).</p>
 <p>Caching a script thus involves -as a first step- computing the exact size of its data. Here is the algorithm :</p>
 <pre><code>uint zend_accel_script_persist_calc(zend_persistent_script *new_persistent_script, char *key, unsigned int key_length TSRMLS_DC)
 {
@@ -250,8 +250,8 @@ For example, for the functions, we must copy into shared memory (shm) :</p>
 <li>The OPArray compiled variables (zend_compiled_variable *)</li>
 </ol></li>
 </ul><p>I did not detail all ;-)
-The idea is as I expressed it : copy in shared memory every pointer and the data stored into the pointers. As deep copies may involve recursive structures, OPCache uses a translate table for pointer storage : everytime it copies a pointer from regular request-bound memory to shared memory, it saves the association between the old pointer address, and the new pointer address.
-The copy process, before copying, looks up this translate table to know if it has already copied the data, if so, it reuses the old pointer data so that it never duplicates any pointer target data :</p>
+The idea is as I expressed it : copy in shared memory every pointer data. As deep copies may involve recursive structures, OPCache uses a translate table for pointer storage : everytime it copies a pointer from regular request-bound memory to shared memory, it saves the association between the old pointer address, and the new pointer address.
+The copy process, before copying, looks up this translate table to know if it has already copied the data, if so, it reuses the old pointer data so that it never duplicates any pointer data :</p>
 <pre><code>void *_zend_shared_memdup(void *source, size_t size, zend_bool free_source TSRMLS_DC)
 {
     void **old_p, *retval;
@@ -272,7 +272,7 @@ The copy process, before copying, looks up this translate table to know if it ha
 <p><code>ZCG(mem)</code> represents the fixed-size shared memory segment and is filled-in as elements are added. It then has already been allocated, there is no need to allocate memory on each copy (which would have been less performant), but simply fill-in the memory, and move forward the pointer address.</p>
 <p>We detailed the script caching algorithm, which role is to take any request-bound memory pointer and data and duplicate it into shared memory, if not already copied.
 The loading algorithm does the exact opposite : it gets the persistent_script back from shared memory and browse every of its dynamic structures to duplicate every shared pointer to a request-bound allocated pointer.
-The script is then ready to be run by the Zend Engine Executor, as it now doesn't embed any shared pointer address (which would lead to massive bugs of one script modifing the structure of its brother). The Zend Engine is tricked (hooked by OPCache) : it has seens nothing of the pointers replacement happening before the execution happens.</p>
+The script is then ready to be run by the Zend Engine Executor, as it now doesn't embed any shared pointer address (which would lead to massive bugs of one script modifing the structure of its brother). The Zend Engine is tricked (hooked by OPCache) : it has seen nothing of the pointers replacement happening before the execution happens.</p>
 <p>This process of copying from regular memory to shared memory (cache script), or the opposite (load script), is highly optimized, and even if it involves many memory copies or hash lookups, which are not really nice in term of performance, we are way faster than triggering the PHP compiler every time.</p>
 <h3 id="sharing-interned-strings">Sharing interned strings<a href="#sharing-interned-strings" class="anchor">#</a></h3>
 <p>Interned strings is a nice memory optimisation that's been added to PHP 5.4. This may feel like some comonsense : every time PHP meets a string (a char*), it stores it into a special buffer and reuses the pointer for every occurence of this same string next to come.</p>
@@ -282,7 +282,7 @@ The script is then ready to be run by the Zend Engine Executor, as it now doesn'
 <p>The same instance of a string is shared to every pointer. This leads to a huge memory saving compared to PHP5.3 and lower.
 But there still is a problem with that : this interned string buffer is a per-process buffer. That means that in a PHP-FPM pool, every PHP worker will store its own copy of this buffer, something like this :</p>
 <p><img alt="PHP-interned-strings-pools" src="../../../img/opcache/PHP-interned-strings-pools.png"></p>
-<p>This leads to a massive waste of memory, especially in case you have tons of workers (you're likely to have), and you use very big strings in your PHP code. What OPCache takes care of, is sharing this buffer between every PHP worker of a pool. Something like this :</p>
+<p>This leads to a massive waste of memory, especially in case you have tons of workers (you're likely to have), and you use very big strings in your PHP code (tip: PHP comments all are strings as well). What OPCache takes care of, is sharing this buffer between every PHP worker of a pool. Something like this :</p>
 <p><img alt="PHP-interned-strings-pools-shared" src="../../../img/opcache/PHP-interned-strings-pools-shared.png"></p>
 <p>Et voila! OPCache shares the interned string buffers of all the PHP-FPM worker of the same pools, and uses its shm segment to store those.
 Thus, you need to size the shm segment according to your interned string usage as well. Also, OPCache allows you to tune the interned strings shm usage using <em>opcache.interned_strings_buffer</em> INI setting. Monitor OPCache and once more : make sure you have enough memory.
@@ -294,6 +294,9 @@ However here, if you run out of interned strings memory space (<em>opcache.inter
         zend_accel_error(ACCEL_LOG_WARNING, "Interned string buffer overflow");
         return arKey;
     }</code></pre>
+<blockquote>
+<p>Interned strings are about every piece of string the PHP compiler is going to meet while doing its job : variable names, "php strings", function names, class names... PHP comments, nowadays used and called "annotations", are strings as well, and they are usually huge strings, that will eat most of your interned strings buffer. Think about them as well.</p>
+</blockquote>
 <h3 id="the-locking-mechanism">The locking mechanism<a href="#the-locking-mechanism" class="anchor">#</a></h3>
 <p>As soon as we talk about shared memory (shm), we must talk about memory locking mecanisms.
 The base line is simple : <strong>every PHP process that is willing to write into shared memory will lock every other process willing to write into shared memory as well</strong>. So the critical section is done on write operations, and not read operations. You may happen to have 150 PHP processes reading the shared memory, only one of them may write into the shm at the same time.</p>
@@ -434,7 +437,7 @@ It then starts using this free space, and stores into it the interned strings bu
 <p>Now, a part of the shm is used by OPCache internals, and the free space left, is dedicated to you : to your scripts datastructures. This (actually free) memory segment will then be filled in, and as your scripts will change and OPCache will recompile them (assuming you told it to), the space will slowly become "wasted"; except if you tell OPCache not to recompile changed scripts (recommanded).</p>
 <p>That may look like something like that :</p>
 <p><img alt="OPCache-memory-structure-hot" src="../../../img/opcache/OPCache-memory-structure-hot.png"></p>
-<p>If persistent scripts HashTable gets full, or if free SHM runs out : OPCache will trigger a restart (which you'd want to prevent absolutely).</p>
+<p>If persistent scripts HashTable becomes full, or if free SHM runs out : OPCache will trigger a restart (which you'd want to prevent absolutely).</p>
 <h3 id="configuring-opcache">Configuring OPCache<a href="#configuring-opcache" class="anchor">#</a></h3>
 <p>If you use a framework based application, like a Symfony2 based application, I strongly suggest :</p>
 <ul><li>you turn off revalidation mechanism on production (turn <em>opcache.validate_timestamps</em> to 0)</li>
@@ -447,10 +450,147 @@ It then starts using this free space, and stores into it the interned strings bu
 <li>You turn off <em>opcache.opcache.revalidate_path</em> and <em>opcache.use_cwd</em>. That will save some key space</li>
 <li>You turn on <em>opcache.enable_file_override</em> , this will accelerate the autoloader</li>
 <li>You fill-in <em>opcache.blacklist_filename</em> list with the script names you are likely to generate during runtime; shouldn't be too many of them anyway</li>
+<li>You turn off <em>opcache.consistency_checks</em>, this basically checks a control sum on your scripts, that eats perf</li>
 </ul><p>With those settings, your memory should never get wasted, then <em>opcache.max_wasted_percentage</em> is not very useful in this case.
 With those settings, you'll need to turn off your main FPM instance when deploying. You may play with several FPM pools to prevent service downtime, like explained earlier.</p>
 <p>That should be enough.</p>
 <h3 id="opcache-compiler-s-optimizer">OPCache compiler's optimizer<a href="#opcache-compiler-s-optimizer" class="anchor">#</a></h3>
+<p>So we talked about caching OPCodes into shm and loading them back later. Just before caching them, OPCache may also run optimizer passes.
+To understand the optimizer, you have to have a good knowledge of <a href="http://jpauli.github.io/2015/02/05/zend-vm-executor.html">how the Zend VM Executor works</a>. Also, you may bring your compiler knowledge, if you are very new to such concepts, perhaps starting <a href="https://msdn.microsoft.com/en-us/magazine/dn904673.aspx">reading some articles on the subject</a> may help ? Or at least the mandatory-reading <a href="http://en.wikipedia.org/wiki/Compilers:_Principles,_Techniques,_and_Tools">Dragon Book</a> ?</p>
+<p>Unfortunately, due to PHP's high level of dynamism, you will notice that there is not a lot of room left for optimizing OPCodes. Something that could change in the future, with PHP7.</p>
+<p>Basically, the optimizer is given the whole OPArray structure, and may now browse it, find flaws, and fix them. But as we are analyzing OPCodes <strong>at compile time</strong>, we have no clue at all on everything tied to a "PHP variable". Basically, we don't know yet what will be stored in any IS_VAR operand, but only in IS_CONST. PHP7 changed many things into this, and things like type hints can also really help, because we would now know at compile time, the type the PHP variables have.</p>
+<p>So, back to PHP5, OPCache optimizer can optimize a lot of things in IS_CONST; We can also replace some OPCodes by others (more optimized at runtime), we also find and trash dead code branches, but we don't yet unroll loops, or process to loop invariant motions. That should come in the future.
+We also have other possibilities related to PHP internals : we may change the way classes are bound to optimize a bit the process in some specific cases, but we have absolutely not the possibility to do some cross file optimizations, because OPCache plays with OPArrays coming from file compilation (among other functions' OPArrays), and there is a total isolation of those OPArrays. PHP has never been built on a cross file based VM : the Virtual Machine and the language is file bound : when compiling a file, we have absolutely no information about the files that already got compiled, and those to come next.
+We then must try to optimize on a file-by-file basis, and must not assume, for example, that class A will be present in the future, if it is not at the moment.</p>
+<blockquote>
+<p>The PHP compiler acts on a file basis and has no shared state through file compilations, it doesn't compile a project in its whole, but a file, followed by others.
+There is no room for cross file optimizations.</p>
+</blockquote>
+<p>OPCache optimization passes can be enabled on a case-by-case basis, using the INI setting <em>opcache.optimization_level</em>. It should represent a mask for optimizations you'd like to see enabled, based on their binary values :</p>
+<pre><code>/* zend_optimizer.h */
+#define ZEND_OPTIMIZER_PASS_1        (1&lt;&lt;0)   /* CSE, STRING construction     */
+#define ZEND_OPTIMIZER_PASS_2        (1&lt;&lt;1)   /* Constant conversion and jumps */
+#define ZEND_OPTIMIZER_PASS_3        (1&lt;&lt;2)   /* ++, +=, series of jumps      */
+#define ZEND_OPTIMIZER_PASS_4        (1&lt;&lt;3)
+#define ZEND_OPTIMIZER_PASS_5        (1&lt;&lt;4)   /* CFG based optimization       */
+#define ZEND_OPTIMIZER_PASS_6        (1&lt;&lt;5)
+#define ZEND_OPTIMIZER_PASS_7        (1&lt;&lt;6)
+#define ZEND_OPTIMIZER_PASS_8        (1&lt;&lt;7)   
+#define ZEND_OPTIMIZER_PASS_9        (1&lt;&lt;8)   /* TMP VAR usage                */
+#define ZEND_OPTIMIZER_PASS_10        (1&lt;&lt;9)   /* NOP removal                 */
+#define ZEND_OPTIMIZER_PASS_11        (1&lt;&lt;10)
+#define ZEND_OPTIMIZER_PASS_12        (1&lt;&lt;11)
+#define ZEND_OPTIMIZER_PASS_13        (1&lt;&lt;12)
+#define ZEND_OPTIMIZER_PASS_14        (1&lt;&lt;13)
+
+#define ZEND_OPTIMIZER_ALL_PASSES    0xFFFFFFFF
+
+#define DEFAULT_OPTIMIZATION_LEVEL  "0xFFFFFFFF"</code></pre>
+<p>Here we go with examples :</p>
+<pre><code>if (false) {
+    echo "foo";
+} else {
+   echo "bar";
+}</code></pre>
+<p>This leads in classical compilation to :</p>
+<p><img alt="OPCache-optimizer-1" src="../../../img/opcache/optimizer/1.png"></p>
+<p>And optimized compilation :</p>
+<p><img alt="OPCache-optimizer-1-opt" src="../../../img/opcache/optimizer/1-opt.png"></p>
+<p>As we can see, the dead code in the <code>if(false)</code> branch has been trashed, the Zend VM executor will then simply have to run a <code>ZEND_ECHO</code> OPcode. We then saved some memory, because we threw away some OPCodes, and we may save a little bit of CPU cycles at runtime as well.</p>
+<p>I recall you that we cannot know the content of any variable yet, as we are still at compile time (we are between compilation and execution). A code with an IS_VAR operand instead of IS_CONST, could not have been optimized :</p>
+<pre><code>/* That cant be optimized, what's in $a ? */
+if ($a) {
+    echo "foo";
+} else {
+   echo "bar";
+}</code></pre>
+<p>More interestingly, OPCache optimizer may switch your IS_CONST operand types, when it knows runtime will have to transtype them. That effectively saves some CPU cycles at runtime :</p>
+<pre><code>$a = 8;
+$c = $a + "42";
+echo $c;</code></pre>
+<p>Classical compilation :</p>
+<p><img alt="OPCache-optimizer-2" src="../../../img/opcache/optimizer/2.png"></p>
+<p>Optimized compilation :</p>
+<p><img alt="OPCache-optimizer-2-opt" src="../../../img/opcache/optimizer/2-opt.png"></p>
+<p>This is not easy to spot, but look at the second operand true type of <code>ZEND_ADD</code> operation : it has switched from a string to an int. The optimizer did the job of transtyping the argument type for the math add operation. If it had not : the runtime VM would have done it again, and again, and again as the code is run again, and again, and again. This saves some CPU cycles involved in the transtyping operation.</p>
+<p>Here is the OPCache optimizer code that does such a job :</p>
+<pre><code>if (ZEND_OPTIMIZER_PASS_2 &amp; OPTIMIZATION_LEVEL) {
+    zend_op *opline;
+    zend_op *end = op_array-&gt;opcodes + op_array-&gt;last;
+
+    opline = op_array-&gt;opcodes;
+    while (opline &lt; end) {
+        switch (opline-&gt;opcode) {
+            case ZEND_ADD:
+            case ZEND_SUB:
+            case ZEND_MUL:
+            case ZEND_DIV:
+                if (ZEND_OP1_TYPE(opline) == IS_CONST) {
+                    if (ZEND_OP1_LITERAL(opline).type == IS_STRING) {
+                        convert_scalar_to_number(&amp;ZEND_OP1_LITERAL(opline) TSRMLS_CC);
+                    }
+                }
+                /* break missing *intentionally* - the assign_op's may only optimize op2 */
+            case ZEND_ASSIGN_ADD:
+            case ZEND_ASSIGN_SUB:
+            case ZEND_ASSIGN_MUL:
+            case ZEND_ASSIGN_DIV:
+                if (opline-&gt;extended_value != 0) {
+                    /* object tristate op - don't attempt to optimize it! */
+                    break;
+                }
+                if (ZEND_OP2_TYPE(opline) == IS_CONST) {
+                    if (ZEND_OP2_LITERAL(opline).type == IS_STRING) {
+                        convert_scalar_to_number(&amp;ZEND_OP2_LITERAL(opline) TSRMLS_CC);
+                    }
+                }
+                break;
+    /* ... ... */</code></pre>
+<p>A little bit more silly, but adding two IS_CONST expression, the result can then be computed at compile time, something the PHP compiler does not do by default, OPCache optimizer is needed :</p>
+<pre><code>$a = 4 + "33";
+echo $a;</code></pre>
+<p>Classical compilation :</p>
+<p><img alt="OPCache-optimizer-3" src="../../../img/opcache/optimizer/3.png"></p>
+<p>Optimized compilation :</p>
+<p><img alt="OPCache-optimizer-3-opt" src="../../../img/opcache/optimizer/3-opt.png"></p>
+<p>The optimizer computed the maths for <code>4 + 33</code>, and erased the <code>ZEND_ADD</code> operation to be run by replacing it directly by the result. This saves again some CPU at runtime, as the VM executor now has less job to do.</p>
+<p>Now let's dive deeper into OPCodes. Sometimes (rarely), it is possible to substitue a following of OPCodes by other ones, more optimized. Look at that :</p>
+<pre><code>$i = "foo";
+$i = $i + 42;
+echo $i;</code></pre>
+<p>Classical compilation :</p>
+<p><img alt="OPCache-optimizer-4" src="../../../img/opcache/optimizer/4.png"></p>
+<p>Optimized compilation :</p>
+<p><img alt="OPCache-optimizer-4-opt" src="../../../img/opcache/optimizer/4-opt.png"></p>
+<p>Here, our knowledge of the Zend VM executor leads us to substitue a <code>ZEND_ADD</code> plus a <code>ZEND_ASSIGN</code>, into a <code>ZEND_ASSIGN_ADD</code>, usually involved in statements such as <code>$i+=3;</code>
+<code>ZEND_ASSIGN_ADD</code> is more optimized, it is one OPCode instead of two (which usually is better, but not every time)</p>
+<p>On the same subject :</p>
+<pre><code>$j = 4;
+$j++;
+echo $j;</code></pre>
+<p>Classical compilation :</p>
+<p><img alt="OPCache-optimizer-5" src="../../../img/opcache/optimizer/5.png"></p>
+<p>Optimized compilation :</p>
+<p><img alt="OPCache-optimizer-5-opt" src="../../../img/opcache/optimizer/5-opt.png"></p>
+<p>Here, OPCache optimizer replaced the <code>$i++</code> by a <code>++$i</code> statement, because it had the same meaning in this piece of code. <code>ZEND_POST_INC</code> is not very nice OPCode, because it must read the value, return it as-is, but increment a temporary value in memory, whereas <code>ZEND_PRE_INC</code> plays with the value itself, and reads it, increments it and returns it (this is just the PRE vs POST incrementation difference).
+Because the intermediate value returned by <code>ZEND_POST_INC</code> is not used in the script above, the compiler must issue a <code>ZEND_FREE</code> OPCode, to free it from memory. OPCache optimizer turns the structure into a <code>ZEND_PRE_INC</code>, and removes the useless <code>ZEND_FREE</code></p>
+<p>Last example :</p>
+<pre><code>const FOO = "bar";
+echo FOO;</code></pre>
+<p><img alt="OPCache-optimizer-6" src="../../../img/opcache/optimizer/6.png"></p>
+<p>Optimized compilation :</p>
+<p><img alt="OPCache-optimizer-6-opt" src="../../../img/opcache/optimizer/6-opt.png"></p>
+<p>This is part of temporary variables optimizations, as we can see, here, once again, one OPCode have been trashed, the result of constant reading is directly figured out at compile time, into the optimizer, and the runtime will have less work to do.</p>
+<p>I did not show you all the work done by the optimizer. It can also optimize embeded loops by issuing "early returns" for example. Same for embed try catch blocks or switch-breaks. PHP function calls, which is a heavy process into the engine, is also optimized when possible.</p>
+<blockquote>
+<p>The main difficulty in optimizer passes, is to never change the meaning of the script, and especially its control flow.</p>
+</blockquote>
+<p>The main difficulty in optimizer passes, is to never change the meaning of the script, and especially its control flow. Bugs were found about this some time ago in OPCache, and it is all but cool when you come to see that PHP executor doesn't behave the way it should, having your little PHP script written under your eyes... In fact, the OPCodes generated have been altered by the optimizer and the engine just runs something which is wrong. Not cool.</p>
+<p>Nowadays, OPCache optimizer is pretty stable, I'm still working on other passes I have in mind, mainly for proof of concept purpose, but if results show nice improvement, I open some PR for the code. PHP7 will change many things into that, its compiler is built on top of an AST, which itself allows optimizations to hook as well (something not possible in PHP5). Also, PHP7 introduced new way in OPCodes management, as well as a more "hintable" language : by declaring function return types and eventually function argument types, depending on the context (and many more things), more optimizations can happen, and they can be more accurate, not even talking about JIT.</p>
+<p>Also, you may wonder why all this job is not done directly into the PHP compiler. The answer is that we want to keep the compiler as safe as possible : this one generates some OPCodes, which sometimes, not at every compilation of every script, may be not much optimized. Then, an external optimizer like the one in OPCache can fire up and do the job. It is the same for every compiler, they usually compile foolishly the code, and only after, you may activate different optimization passes, but the raw code at the compiler output should be extra safe.</p>
+<h3 id="end">End<a href="#end" class="anchor">#</a></h3>
+<p>We've seen that OPCache has finally become the standard recommanded PHP OPCode caching solution. We detailed how it works, not that hard to understand, but error prone yet. Nowadays, the PHP5 branch is very mature and stable, and achieves its goal of boosting dramatically the overall performance of the PHP language by both canceling the time needed to compile a script and by optimizing the OPCodes resulting of the compilation. Shared memory is used for every process of a PHP pool to be able to access structures that have been added by others. Interned string buffer is also managed in shared memory, leading to even more memory savings in a PHP pool of workers - typically using PHP-FPM SAPI.</p>
+<p>Now there is still some job to achieve to have a stable OPCache extension for PHP7, whose release is planned for end of 2015. The new PHP7 structures and engine will allow future optimizations to be added to OPCache, boosting even more a language that already showed several hundreds of percent boost in raw performance, compared to PHP5, with no OPCache solution at all. Nice future to come.</p>
     </div>
 
       </article>
