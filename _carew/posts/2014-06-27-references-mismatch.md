@@ -28,7 +28,7 @@ Reference counting is a really really common basic computer programming trick to
 PHP is very well designed (I'm serious). It tries to do its best to save memory while running your code.
 But should you know how reference counting works, you should know there are some situations you should avoid.
 
-I'm gonna talk about reference mimatch in PHP function calls here.
+I'm gonna talk about reference mismatch in PHP function calls here.
 
 ##What to do or not to do ?
 
@@ -42,7 +42,7 @@ code you are using.
 
 ##What is a reference mismatch ?
 
-A reference mimatch is when you call a function whose argument is expected to be passed by reference, and
+A reference mismatch is when you call a function whose argument is expected to be passed by reference, and
 you pass it a non-reference, or the opposite case.
 
 Here are few examples :
