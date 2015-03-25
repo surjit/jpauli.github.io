@@ -69,7 +69,7 @@ to track variable usages, just like any other language, or even the Kernel itsel
 Reference counting is a really really common basic computer programming trick to save memory.</p>
 <p>PHP is very well designed (I'm serious). It tries to do its best to save memory while running your code.
 But should you know how reference counting works, you should know there are some situations you should avoid.</p>
-<p>I'm gonna talk about reference mimatch in PHP function calls here.</p>
+<p>I'm gonna talk about reference mismatch in PHP function calls here.</p>
 <h2 id="what-to-do-or-not-to-do">What to do or not to do ?<a href="#what-to-do-or-not-to-do" class="anchor">#</a></h2>
 <p>What you should do is not use references (&amp;) , until you really master what you do.</p>
 <p>More seriously, you should absolutely avoid <strong>reference mismatch</strong> when calling functions.
@@ -78,7 +78,7 @@ If the variable is big (a very long string, a very complex array), then you're g
 Worse, you're gonna complain against PHP, which has nothing to do with that. The problem is you, and the
 code you are using.</p>
 <h2 id="what-is-a-reference-mismatch">What is a reference mismatch ?<a href="#what-is-a-reference-mismatch" class="anchor">#</a></h2>
-<p>A reference mimatch is when you call a function whose argument is expected to be passed by reference, and
+<p>A reference mismatch is when you call a function whose argument is expected to be passed by reference, and
 you pass it a non-reference, or the opposite case.</p>
 <p>Here are few examples :</p>
 <pre><code>function foo($arg) { }
