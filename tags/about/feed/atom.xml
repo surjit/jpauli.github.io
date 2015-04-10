@@ -5,8 +5,515 @@
     <link href="http://jpauli.github.io//feed/index.atom" rel="self" />
     <link href="http://jpauli.github.io//" />
         <id>http://jpauli.github.io//</id>
-            <updated>2015-03-24T00:00:00+00:00</updated>
+            <updated>2015-04-09T00:00:00+00:00</updated>
             <entry>
+        <title>Exceptional PHP</title>
+                <id>http://jpauli.github.io//2015/04/09/exceptional-php.html</id>
+                <updated>2015-04-09T00:00:00+00:00</updated>
+        <author>
+            <name>Julien Pauli</name>
+            <email>jpauli@php.net</email>
+        </author>
+        <link rel="alternate" type="text/html" href="http://jpauli.github.io//2015/04/09/exceptional-php.html"/>
+        <content type="html" xml:lang="en"><![CDATA[<h2 id="php-exceptions-in-short">PHP Exceptions in short<a href="#php-exceptions-in-short" class="anchor">#</a></h2>
+<p>Back in 2004, PHP5 came out with a new model object. This latter allows PHP users to make use of a well known OO paradigm : Exceptions.
+The Exceptions model has then not been really reworked. PHP 5.3 introduced stacked Exceptions, which is a very nice improvement in stack traces analysis, and PHP 5.5 added the "<em>finally</em>" feature.
+As you know how Exceptions work with PHP, because you are a heavy user of the PHP language, let me show you how this big feature works in the PHP source code, into the Zend Engine : how it's been implemented.</p>
+<h2 id="exception-this-so-particular-class">Exception : this so particular class<a href="#exception-this-so-particular-class" class="anchor">#</a></h2>
+<p>You know that the Exception class (and all of its possible children) is very special into the engine, because it is the only one that may react with the <em>try-throw-catch-finally</em> PHP language constructs.
+Also, you know the Exception class automagically builds a stacktrace when an object is built from it.
+Let's recall its structure :</p>
+<pre><code>&gt; php --rc Exception
+Class [ &lt;internal:Core&gt; class Exception ] {
+
+  - Constants [0] { }
+
+  - Static properties [0] { }
+
+  - Static methods [0] { }
+
+  - Properties [7] {
+    Property [ &lt;default&gt; protected $message ]
+    Property [ &lt;default&gt; private $string ]
+    Property [ &lt;default&gt; protected $code ]
+    Property [ &lt;default&gt; protected $file ]
+    Property [ &lt;default&gt; protected $line ]
+    Property [ &lt;default&gt; private $trace ]
+    Property [ &lt;default&gt; private $previous ]
+  }
+
+  - Methods [10] {
+    Method [ &lt;internal:Core&gt; final private method __clone ] {
+    }
+
+    Method [ &lt;internal:Core, ctor&gt; public method __construct ] {
+
+      - Parameters [3] {
+        Parameter #0 [ &lt;optional&gt; $message ]
+        Parameter #1 [ &lt;optional&gt; $code ]
+        Parameter #2 [ &lt;optional&gt; $previous ]
+      }
+    }
+
+    Method [ &lt;internal:Core&gt; final public method getMessage ] {
+    }
+
+    Method [ &lt;internal:Core&gt; final public method getCode ] {
+    }
+
+    Method [ &lt;internal:Core&gt; final public method getFile ] {
+    }
+
+    Method [ &lt;internal:Core&gt; final public method getLine ] {
+    }
+
+    Method [ &lt;internal:Core&gt; final public method getTrace ] {
+    }
+
+    Method [ &lt;internal:Core&gt; final public method getPrevious ] {
+    }
+
+    Method [ &lt;internal:Core&gt; final public method getTraceAsString ] {
+    }
+
+    Method [ &lt;internal:Core&gt; public method __toString ] {
+    }
+  }
+}</code></pre>
+<p>As you can see, lots of methods are final : you may not change the default behavior, dictated by the engine source code.
+You cannot clone Exceptions, and if you extend the class, some attributes are private : you can't change them.</p>
+<p>This is because the engine expects some well defined behavior when it comes to play with an Exception object, or one of its children.</p>
+<p>You also know that Exception is the base class of every other exceptions, SPL ones, foobar ones, or yours.
+This is checked when one wants to throw something, for PHP extensions one must call <code>zend_throw_exception_object()</code>, and for PHP userland code the compiler will anyway lead to this same function :</p>
+<pre><code>ZEND_API void zend_throw_exception_object(zval *exception TSRMLS_DC)
+{
+    zend_class_entry *exception_ce;
+
+    if (exception == NULL || Z_TYPE_P(exception) != IS_OBJECT) {
+        zend_error(E_ERROR, "Need to supply an object when throwing an exception");
+    }
+
+    exception_ce = Z_OBJCE_P(exception);
+
+    if (!exception_ce || !instanceof_function(exception_ce, default_exception_ce TSRMLS_CC)) {
+        zend_error(E_ERROR, "Exceptions must be valid objects derived from the Exception base class");
+    }
+    zend_throw_exception_internal(exception TSRMLS_CC);
+}</code></pre>
+<p>So, you can't throw something which is not an object, and you can't throw an object which doesn't have the Exception class as an ancestor. Things are somewhat "locked" here.</p>
+<h2 id="a-little-tour-of-exception-s-internals">A little tour of Exception's internals<a href="#a-little-tour-of-exception-s-internals" class="anchor">#</a></h2>
+<p>Internally, Exceptions are nothing more than objects. They however define custom Zend Engine object handlers, which provide them this so particular behavior.
+When the engine starts, among many other boots, it boots the exceptions by calling <code>zend_register_default_exception()</code> :</p>
+<pre><code>void zend_register_default_exception(TSRMLS_D)
+{
+    zend_class_entry ce;
+
+    INIT_CLASS_ENTRY(ce, "Exception", default_exception_functions);
+    default_exception_ce = zend_register_internal_class(&amp;ce TSRMLS_CC);
+    default_exception_ce-&gt;create_object = zend_default_exception_new;
+    memcpy(&amp;default_exception_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
+    default_exception_handlers.clone_obj = NULL;
+
+    /* ... */
+}</code></pre>
+<p>As we can see, this function registers the Exception class, and puts the clone handler to NULL. That means (somehow) that the Exception class is not clonable. Also, the <code>__clone()</code> method which is added to the class (not shown here) is passed final, so that you can't redefine it, Exceptions are not clonable, that's a fact.</p>
+<p>We can notice as well that we overwrite the <em>create_object</em> handler. This handler is triggered when an object will be created from the class, and before the userland constructor : <code>__construct()</code>.
+That means that even if you extend the class, redefine the constructor, and forget to call the parent one, the Exception object will be just right to the eyes of the engine.
+Here is the <em>create_object</em> handler :</p>
+<pre><code>static zend_object_value zend_default_exception_new_ex(zend_class_entry *class_type, int skip_top_traces TSRMLS_DC)
+{
+    zval obj;
+    zend_object *object;
+    zval *trace;
+
+    Z_OBJVAL(obj) = zend_objects_new(&amp;object, class_type TSRMLS_CC);
+    Z_OBJ_HT(obj) = &amp;default_exception_handlers;
+
+    object_properties_init(object, class_type);
+
+    ALLOC_ZVAL(trace);
+    Z_UNSET_ISREF_P(trace);
+    Z_SET_REFCOUNT_P(trace, 0);
+    zend_fetch_debug_backtrace(trace, skip_top_traces, 0, 0 TSRMLS_CC);
+
+    zend_update_property_string(default_exception_ce, &amp;obj, "file", sizeof("file")-1, zend_get_executed_filename(TSRMLS_C) TSRMLS_CC);
+    zend_update_property_long(default_exception_ce, &amp;obj, "line", sizeof("line")-1, zend_get_executed_lineno(TSRMLS_C) TSRMLS_CC);
+    zend_update_property(default_exception_ce, &amp;obj, "trace", sizeof("trace")-1, trace TSRMLS_CC);
+
+    return Z_OBJVAL(obj);
+}</code></pre>
+<p>What is interesting to note, is that we fetch the backtrace (<code>zend_fetch_debug_backtrace()</code>) immediately when the object is created, and <em>not</em> when the object is thrown.
+Have a look :</p>
+<pre><code>function bar(Exception $a)
+{
+    throw $a;
+}
+function baz($a)
+{
+    throw new Exception('foo');
+}
+function foo($a)
+{
+    return new Exception('foo');
+}
+$b = foo('a');
+
+bar($b); /* first */
+baz($b); /* second */</code></pre>
+<p><code>bar()</code> and <code>baz()</code> cant be run following as <code>bar()</code> will throw an exception and stop the script. But if you run this code with only <code>bar()</code> call, you get this</p>
+<pre><code>Fatal error: Uncaught exception 'Exception' with message 'foo' in /tmp/php.php:13
+Stack trace:
+#0 /tmp/php.php(15): foo('a')
+#1 {main}
+  thrown in /tmp/php.php on line 13</code></pre>
+<p>But with a call to <code>baz()</code> instead of <code>bar()</code>, you'll get this :</p>
+<pre><code>Fatal error: Uncaught exception 'Exception' with message 'foo' in /tmp/php.php:9
+Stack trace:
+#0 /tmp/php.php(17): baz(Object(Exception))
+#1 {main}
+  thrown in /tmp/php.php on line 9</code></pre>
+<p>As you can see, the line numbers in the stack trace are not the same, they always match the Exception construction and not the Exception throw.</p>
+<h2 id="exceptions-into-the-zend-virtual-machine-executor">Exceptions into the Zend Virtual Machine Executor<a href="#exceptions-into-the-zend-virtual-machine-executor" class="anchor">#</a></h2>
+<p>If you don't know how the Zend Virtual Machine Executor works, you should read <a href="jpauli.github.io/2015/02/05/zend-vm-executor.html">the related article</a>.
+Now that you have a glance on how the executor works, well, Exceptions are not hard to understand.</p>
+<h3 id="throwing-an-exception">Throwing an Exception<a href="#throwing-an-exception" class="anchor">#</a></h3>
+<p>To throw an Exception, one may use the <code>throw</code> PHP keyword, compiled as a <code>ZEND_THROW</code> OPCode.
+<code>ZEND_THROW</code> simply gets the exception, and adds it into the <em>engine executor exception slot</em>. This slot is alone : weither there is an exception into it, or not. There can't be several exceptions into the slot, the basic line is binary : weither or not there is an exception pending (not 2, 3 or 42).</p>
+<p>The slot is accessible using the <code>EG(exception)</code> macro. If it is NULL : no exception have been thrown so far.
+Here is <code>ZEND_THROW</code>, simplified :</p>
+<pre><code>ZEND_VM_HANDLER(108, ZEND_THROW, CONST|TMP|VAR|CV, ANY)
+{
+    /* ... */
+    zend_exception_save(TSRMLS_C);
+    ALLOC_ZVAL(exception);
+    INIT_PZVAL_COPY(exception, value);
+    if (!IS_OP1_TMP_FREE()) {
+        zval_copy_ctor(exception);
+    }
+
+    zend_throw_exception_object(exception TSRMLS_CC);
+    zend_exception_restore(TSRMLS_C);
+    /* ... */
+}</code></pre>
+<p>So basically things are easy, the executor code leads to <code>zend_throw_exception_object()</code> , which will quickly lead to <code>zend_throw_exception_internal()</code> :</p>
+<pre><code>void zend_throw_exception_internal(zval *exception TSRMLS_DC)
+{
+    if (exception != NULL) {
+        zval *previous = EG(exception);
+        zend_exception_set_previous(exception, EG(exception) TSRMLS_CC);
+        EG(exception) = exception; /* Fill in the executor slot */
+        if (previous) {
+            return;
+        }
+    }
+    if (!EG(current_execute_data)) {
+        if(EG(exception)) {
+            zend_exception_error(EG(exception), E_ERROR TSRMLS_CC);
+        }
+        zend_error(E_ERROR, "Exception thrown without a stack frame");
+    }
+
+    /* ... */
+
+    /* Change the VM path next to execute */
+    EG(opline_before_exception) = EG(current_execute_data)-&gt;opline;
+    EG(current_execute_data)-&gt;opline = EG(exception_op);
+}</code></pre>
+<p>That's it : <code>EG(exception)</code> is beeing filled with the thrown exception. And the very important things are the two last lines.</p>
+<pre><code>/* Change the VM path next to execute */
+EG(opline_before_exception) = EG(current_execute_data)-&gt;opline;
+EG(current_execute_data)-&gt;opline = EG(exception_op);</code></pre>
+<p>We just threw an Exception, so now, the engine is not expected to continue on the next instruction like if nothing had happened, but to treat the exception : run the catch block (if any), run the finally block (if any), or continue running if none of those blocks are present.</p>
+<p>This is done by changing the opline of the executor, and making it point to <code>EG(exception_op)</code>, which value is always the same : <code>ZEND_HANDLE_EXCEPTION</code></p>
+<h3 id="handling-an-exception">Handling an Exception<a href="#handling-an-exception" class="anchor">#</a></h3>
+<p>So now, whatever was compiled next (whatever the PHP lines of code following the <code>throw</code> keyword), the engine will run <code>ZEND_HANDLE_EXCEPTION</code>.</p>
+<p>This handler is a little bit big, because of some memory management routines. Simplified, it gives this :</p>
+<pre><code>ZEND_VM_HANDLER(149, ZEND_HANDLE_EXCEPTION, ANY, ANY)
+{
+    zend_uint op_num = EG(opline_before_exception)-EG(active_op_array)-&gt;opcodes;
+    int i;
+    zend_uint catch_op_num = 0, finally_op_num = 0;
+    void **stack_frame;
+
+    /* ... */
+
+    for (i=0; i&lt;EG(active_op_array)-&gt;last_try_catch; i++) {
+        if (EG(active_op_array)-&gt;try_catch_array[i].try_op &gt; op_num) {
+            /* further blocks will not be relevant... */
+            break;
+        }
+        if (op_num &lt; EG(active_op_array)-&gt;try_catch_array[i].catch_op) {
+            catch_op_num = EX(op_array)-&gt;try_catch_array[i].catch_op;
+        }
+        if (op_num &lt; EG(active_op_array)-&gt;try_catch_array[i].finally_op) {
+            finally_op_num = EX(op_array)-&gt;try_catch_array[i].finally_op;
+        }
+    }
+
+    /* ... */
+}</code></pre>
+<p>We can see that this Zend Virtual Machine Executor handler's job is to find into the OPArray the very next <code>catch</code> block and <code>finally</code> block. Don't forget that such blocks may be nested : you can nest <em>try-catch-finally</em> structures, and it would be better in such case to run the <em>catch</em> block corresponding to the right <em>try</em> wouldn't it ?</p>
+<p>So we search for the next catch block as <em>catch_op_num</em> (if any), and the next finally block as <em>finally_op_num</em> (if any).
+The procedure is fast, because the compiler already filled-in the index of the <em>last_try_catch</em>, and every try-catch block is compiled into the <em>try_catch_array</em> of the current OPArray : the executor has here a little job to do, all the hard work has been computed by the compiler earlier.</p>
+<h3 id="catch">Catch<a href="#catch" class="anchor">#</a></h3>
+<p>Continuing the source code of <code>ZEND_HANDLE_EXCEPTION</code> :</p>
+<pre><code>/* ... */
+
+if (finally_op_num &amp;&amp; (!catch_op_num || catch_op_num &gt;= finally_op_num)) {
+    zend_exception_save(TSRMLS_C);
+    EX(fast_ret) = NULL;
+    ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[finally_op_num]);
+    ZEND_VM_CONTINUE();
+} else if (catch_op_num) {
+    ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[catch_op_num]);
+    ZEND_VM_CONTINUE();
+} else {
+    if (UNEXPECTED((EX(op_array)-&gt;fn_flags &amp; ZEND_ACC_GENERATOR) != 0)) {
+        ZEND_VM_DISPATCH_TO_HANDLER(ZEND_GENERATOR_RETURN);
+    } else {
+        ZEND_VM_DISPATCH_TO_HELPER(zend_leave_helper);
+    }
+}</code></pre>
+<p>Well, this is now very clear.
+If there is a finally block and no catch block, or if the catch block appears after the finally block, make the executor jump to the finally block, and run it</p>
+<pre><code>ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[finally_op_num]);
+ZEND_VM_CONTINUE();</code></pre>
+<p>If there is no finally block but a catch block, make the executor jump to this catch block, and run it</p>
+<pre><code>ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[catch_op_num]);
+ZEND_VM_CONTINUE();</code></pre>
+<p>Else, no catch nor finally ? Then make the executor runs the <code>zend_leave_helper</code>, which will basically acts like a <code>return</code> statement : it will stop the current execution and return from it, quickly leading to the "Uncaught Exception" error.</p>
+<p>The catch block is compiled as a <code>ZEND_CATCH</code> opcode. This latter will barely fetch the Exception class you declared into your catch block, and browse its inheritence tree to see if it will run the block or not.</p>
+<pre><code>ZEND_VM_HANDLER(107, ZEND_CATCH, CONST, CV)
+{
+    /* ... */
+    catch_ce = zend_fetch_class_by_name(Z_STRVAL_P(opline-&gt;op1.zv), Z_STRLEN_P(opline-&gt;op1.zv), opline-&gt;op1.literal + 1, ZEND_FETCH_CLASS_NO_AUTOLOAD TSRMLS_CC);
+
+    ce = Z_OBJCE_P(EG(exception));
+
+    if (ce != catch_ce) {
+        if (!instanceof_function(ce, catch_ce TSRMLS_CC)) {
+            if (opline-&gt;result.num) {
+                zend_throw_exception_internal(NULL TSRMLS_CC);
+                HANDLE_EXCEPTION();
+            }
+            ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;extended_value]);
+            ZEND_VM_CONTINUE();
+        }
+    }
+    exception = EG(exception);
+    /* ... */
+    if (UNEXPECTED(EG(exception) != exception)) {
+        Z_ADDREF_P(EG(exception));
+        HANDLE_EXCEPTION();
+    } else {
+        EG(exception) = NULL;
+        ZEND_VM_NEXT_OPCODE();
+    }
+}</code></pre>
+<p>So here, we try to load the class which is declared into the catch block, without triggering the autoload (this was a change from PHP 5.0 which triggered the autoload).</p>
+<p>If it is the right class, or one of its ancestor : this catch block is ours, we must run its code : we then use <code>ZEND_VM_NEXT_OPCODE()</code> to tell the executor to fetch the next instruction and run it.</p>
+<p>If it is not our Exception, then we must not run this current catch block : it is not ours. We then "rethrow" the Exception internally : <code>zend_throw_exception_internal()</code>. That will make the VM Executor re-run the <code>ZEND_HANDLE_EXCEPTION</code> OPCode, but this time, starting from our catch block : it will then re-do its operation, considerating the (eventually) next catch block , etc.. etc... until it finds the right catch block (if any) to run code from.</p>
+<p>Important thing : if it is our catch block and we run its code, we reset the exception slot : <code>EG(exception) = NULL;</code></p>
+<h3 id="finally">finally<a href="#finally" class="anchor">#</a></h3>
+<p><em>Finally</em> is a little bit harder to understand and has not been trivial to add to PHP 5.5.</p>
+<p>The trick is that after having run the <em>finally</em> block, we must weither continue execution if a catch treated the exception, or stop the execution if the Exception was actually uncaught.</p>
+<p>To achieve this, we introduced two new OPCodes in PHP5.5, just for the <em>finally</em> feature : <code>ZEND_FAST_CALL</code> and <code>ZEND_FAST_RETURN</code>, and we also play with <code>ZEND_JMP</code>.</p>
+<p>So here is the code the Zend Compiler generates for finally block :</p>
+<pre><code>void zend_do_finally(znode *finally_token TSRMLS_DC)
+{
+    zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
+
+    finally_token-&gt;u.op.opline_num = get_next_op_number(CG(active_op_array));
+    /* call the the "finally" block */
+    opline-&gt;opcode = ZEND_FAST_CALL;
+    SET_UNUSED(opline-&gt;op1);
+    opline-&gt;op1.opline_num = finally_token-&gt;u.op.opline_num + 1;
+    SET_UNUSED(opline-&gt;op2);
+    /* jump to code after the "finally" block,
+     * the actual jump address is going to be set in zend_do_end_finally()
+     */
+    opline = get_next_op(CG(active_op_array) TSRMLS_CC);
+    opline-&gt;opcode = ZEND_JMP;
+    SET_UNUSED(opline-&gt;op1);
+    SET_UNUSED(opline-&gt;op2);
+
+    CG(context).in_finally++;
+}
+
+void zend_do_end_finally(znode *try_token, znode* catch_token, znode *finally_token TSRMLS_DC)
+{
+    if (catch_token-&gt;op_type == IS_UNUSED &amp;&amp; finally_token-&gt;op_type == IS_UNUSED) {
+        zend_error(E_COMPILE_ERROR, "Cannot use try without catch or finally");
+    }
+    if (finally_token-&gt;op_type != IS_UNUSED) {
+        zend_op *opline;
+
+        CG(active_op_array)-&gt;try_catch_array[try_token-&gt;u.op.opline_num].finally_op = finally_token-&gt;u.op.opline_num + 1;
+        CG(active_op_array)-&gt;try_catch_array[try_token-&gt;u.op.opline_num].finally_end = get_next_op_number(CG(active_op_array));
+        CG(active_op_array)-&gt;has_finally_block = 1;
+
+        opline = get_next_op(CG(active_op_array) TSRMLS_CC);
+        opline-&gt;opcode = ZEND_FAST_RET;
+        SET_UNUSED(opline-&gt;op1);
+        SET_UNUSED(opline-&gt;op2);
+
+        CG(active_op_array)-&gt;opcodes[finally_token-&gt;u.op.opline_num].op1.opline_num = get_next_op_number(CG(active_op_array));
+
+        CG(context).in_finally--;
+    }
+}</code></pre>
+<p>What the compiler does is simple :</p>
+<ul><li>When we meet a finally block, we generate a <code>ZEND_FAST_CALL</code> plus a <code>ZEND_JMP</code></li>
+<li>We keep compiling the instructions into the finally block, normally, nothing to say</li>
+<li>At the end of the finally block, we generate a <code>ZEND_FAST_RET</code> OPCode</li>
+</ul><p>We have just wrapped the finally block between two markers that will help the executor to find its path.</p>
+<p>Here is a simplified compiler output :</p>
+<pre><code>try {
+    throw new Exception('foo');
+} catch (Exception $e) {
+    echo "catch block";
+} finally {
+    echo 'finally block';
+}
+
+echo "end";
+
+line     #* I O op                           fetch          ext  return  operands
+-----------------------------------------------------------------------------------
+         4    &gt; THROW                                         0          $1
+   5     5*     JMP                                                      -&gt;8
+         6  &gt;   CATCH                                         8          'Exception', !0
+   6     7      ECHO                                                     'catch+block'
+   7     8      FAST_CALL                                                -&gt;10
+         9    &gt; JMP                                                      -&gt;12
+   8    10*     ECHO                                                     'finally+block'
+   9    11*     FAST_RET                                                 
+  11    12  &gt;   ECHO                                                     'end'
+  12    13    &gt; RETURN                                                   1</code></pre>
+<p>When the executor comes to run the finally block, it then first runs the <code>ZEND_FAST_CALL</code> OPCode, it looks like this :</p>
+<pre><code>ZEND_VM_HANDLER(162, ZEND_FAST_CALL, ANY, ANY)
+{
+    USE_OPLINE
+
+    if ((opline-&gt;extended_value &amp; ZEND_FAST_CALL_FROM_CATCH) &amp;&amp;
+        UNEXPECTED(EG(prev_exception) != NULL)) {
+        /* in case of unhandled exception jump to catch block instead of finally */
+        ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;op2.opline_num]);
+        ZEND_VM_CONTINUE();
+    }
+    EX(fast_ret) = opline;
+    ZEND_VM_SET_OPCODE(opline-&gt;op1.jmp_addr);
+    ZEND_VM_CONTINUE();
+}</code></pre>
+<p>What we do in the normal flow, is memorize the current opcode beeing dispatched, that is ourselves : <code>ZEND_FAST_CALL</code>, we save this OPCode index (into the OPArray) using <code>EX(fast_ret)</code>.
+Then, we make the executor go to the OPCode stored into a jump address computed by the compiler : we make the executor run the finally block, just normally.</p>
+<p>The trick is that this finally block is finished by a <code>ZEND_FAST_RET</code> OPCode, the compiler generated it as we saw. Here it is :</p>
+<pre><code>ZEND_VM_HANDLER(163, ZEND_FAST_RET, ANY, ANY)
+{
+    if (EX(fast_ret)) {
+        ZEND_VM_SET_OPCODE(EX(fast_ret) + 1);
+        if ((EX(fast_ret)-&gt;extended_value &amp; ZEND_FAST_CALL_FROM_FINALLY)) {
+            EX(fast_ret) = &amp;EX(op_array)-&gt;opcodes[EX(fast_ret)-&gt;op2.opline_num];
+        }
+        ZEND_VM_CONTINUE();
+    } else {
+        /* special case for unhandled exceptions */
+        USE_OPLINE
+
+        if (opline-&gt;extended_value == ZEND_FAST_RET_TO_FINALLY) {
+            ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;op2.opline_num]);
+            ZEND_VM_CONTINUE();
+        } else if (opline-&gt;extended_value == ZEND_FAST_RET_TO_CATCH) {
+            zend_exception_restore(TSRMLS_C);
+            ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;op2.opline_num]);
+            ZEND_VM_CONTINUE();
+        } else if (UNEXPECTED((EX(op_array)-&gt;fn_flags &amp; ZEND_ACC_GENERATOR) != 0)) {
+            zend_exception_restore(TSRMLS_C);
+            ZEND_VM_DISPATCH_TO_HANDLER(ZEND_GENERATOR_RETURN);
+        } else {
+            zend_exception_restore(TSRMLS_C);
+            ZEND_VM_DISPATCH_TO_HELPER(zend_leave_helper);
+        }
+    }
+}</code></pre>
+<p>So here now, if the exception was caught, <code>EX(fast_ret)</code> is still here. We fall into the <code>if</code> part and tell the executor to run the next OPCode using <code>ZEND_VM_SET_OPCODE(EX(fast_ret) + 1);</code> , and this next OPCode is a <code>ZEND_JMP</code> that will make it jump after the finally block.</p>
+<p>If the exception was uncaught, that is we ran the finally block but no catch before, <code>ZEND_HANDLE_EXCEPTION</code> will have erased <code>EX(fast_ret)</code> setting it to NULL, we then fall into the <code>else</code> part and will barely return.</p>
+<h3 id="uncaught-exceptions">Uncaught Exceptions<a href="#uncaught-exceptions" class="anchor">#</a></h3>
+<p>Uncaught Exceptions are easy to understand. Like we have seen in the past chapters, uncaught exceptions are managed by the executor calling <code>zend_leave_helper</code> , which will make it return from the current execute context.</p>
+<p>At the end of the just-run context, we simply sniff the execution slot. If it is filled in with an exception, well, this one has not been handled (caught).
+We then weither call the user exception handler, or generate our fatal error with a call to <code>zend_exception_error()</code> :</p>
+<pre><code>/* ... */
+if (EG(exception)) {
+    if (EG(user_exception_handler)) {
+        zval *orig_user_exception_handler;
+        zval **params[1], *retval2, *old_exception;
+        old_exception = EG(exception);
+        EG(exception) = NULL;
+        params[0] = &amp;old_exception;
+        orig_user_exception_handler = EG(user_exception_handler);
+        if (call_user_function_ex(CG(function_table), NULL, orig_user_exception_handler, &amp;retval2, 1, params, 1, NULL TSRMLS_CC) == SUCCESS) {
+            if (retval2 != NULL) {
+                zval_ptr_dtor(&amp;retval2);
+            }
+            if (EG(exception)) {
+                zval_ptr_dtor(&amp;EG(exception));
+                EG(exception) = NULL;
+            }
+            zval_ptr_dtor(&amp;old_exception);
+        } else {
+            EG(exception) = old_exception;
+            zend_exception_error(EG(exception), E_ERROR TSRMLS_CC);
+        }
+    } else {
+        zend_exception_error(EG(exception), E_ERROR TSRMLS_CC);
+    }
+}</code></pre>
+<h2 id="php-exceptions-tips-and-tricks">PHP Exceptions tips and tricks<a href="#php-exceptions-tips-and-tricks" class="anchor">#</a></h2>
+<p>Ok, here we go. Like always, PHP is not perfect, and can't be either. There are some scenarios that are known to be a little bit strange.</p>
+<h3 id="stack-traces">Stack traces<a href="#stack-traces" class="anchor">#</a></h3>
+<p>We've seen that the stack trace generation -which itself is a heavy and complex subject into the Zend Engine- is generated when the Exception object gets constructed. The stack trace is added to the <code>trace</code> private attribute. This is to be remembered, because now, when you will try to serialize an Exception (if you want to), then any of its attribute will get serialized (that's PHP default behavior you know about), but what about this <code>trace</code> attribute ?
+The trick is that this latter may not be serializable, if the stack trace of the Exception contains something which is not serializable, like a SimpleXMLElement object, or a PDO one.</p>
+<p>Have a look :</p>
+<pre><code>$xml = new SimpleXMLElement('&lt;foo&gt;&lt;/foo&gt;');
+
+function hey($arg)
+{
+  $s = serialize(new Exception());
+}
+
+hey($xml);</code></pre>
+<p>This code lead to this error :</p>
+<pre><code>Fatal error: Uncaught exception 'Exception' with message 'Serialization of 'SimpleXMLElement' is not allowed' in foo.php</code></pre>
+<p>Now you know why. If you want to serialize Exception for whatever reason, take care that the stack trace into the Exception object may be huge and not serializable.</p>
+<h3 id="exception-thrown-without-a-stack-frame">Exception thrown without a stack frame<a href="#exception-thrown-without-a-stack-frame" class="anchor">#</a></h3>
+<p>This used to be a strange behavior in PHP &lt; 5.3. Since PHP 5.3 however, this error should not show again with vanilla PHP, but some badly designed custom extensions could still lead to such an error message to appear.</p>
+<h3 id="using-reflection-to-crash-php-with-exceptions">Using Reflection to crash PHP with Exceptions.<a href="#using-reflection-to-crash-php-with-exceptions" class="anchor">#</a></h3>
+<p>This code crashes the engine :</p>
+<pre><code>$e  = new ReflectionClass('Exception');
+$ex = new Exception('foo');
+
+$file = $e-&gt;getProperty('trace');
+$file-&gt;setAccessible(true);
+$file-&gt;setValue($ex, new stdclass);
+
+throw $ex;</code></pre>
+<p>And this is perfectly normal if you followed the whole article.
+The Exception class (object), is a very particular object that the Engine will manipulate internally for its own work.
+The engine does not expect the Exception object to have its <code>trace</code> property beeing something else that a well formed array.
+If you use the reflection API to change one of its private member's type, you are very likely to generate bad behavior, such as memory access failures into the engine, and crash it like the script above does.</p>
+<p>We have been reported such a bug in the past, and we decided not to fix it, mainly for always the same reasons here :</p>
+<ul><li>This is a very tricky use case, which may not be used everyday</li>
+<li>This code snippet trying to change the Exception internals brings nothing useful but is clearly hackish</li>
+<li>Fixing such a case would lead to a massive code change all over the engine, which tells us it is not worth the use case, too uncommon.</li>
+</ul><p>PHP is a tradeoff you know, like every computer program.</p>
+<h2 id="end">End<a href="#end" class="anchor">#</a></h2>
+<p>This post tried to explain you how Exceptions have been handled into the engine. We saw some Zend Compiler generated code, and analyzed Zend Executor handlers code to understand how things work into the VM.
+As you know, the Zend VM is a big dispatcher loop which control flow may be altered at any time, using some macros such as <code>ZEND_VM_SET_OPCODE()</code>, <code>ZEND_VM_RETURN()</code> etc...
+That's how Exceptions have been designed; with a little bit more tricky <em>finally</em> feature, requiring some extra OPCodes and some JMP playings.</p>
+<p>Once more, the goal was to have a nice feature, usefull to people, but also performant : we've seen that once more, many hard and slow work is done into the compiler : <em>try-catch-finally</em> OPCode browsing loops, jump address computations, etc...
+We can then say that Exceptions are not a slow feature into PHP, but a well optimized one. You may use them whenever you want, take care however of some little bit strange but uncommon behaviors about them.</p>]]></content>
+    </entry>
+        <entry>
         <title>Zoom on PHP objects and classes</title>
                 <id>http://jpauli.github.io//2015/03/24/zoom-on-php-objects.html</id>
                 <updated>2015-03-24T00:00:00+00:00</updated>
