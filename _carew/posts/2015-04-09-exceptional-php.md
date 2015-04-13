@@ -193,7 +193,7 @@ Now that you have a glance on how the executor works, well, Exceptions are not h
 ### Throwing an Exception
 
 To throw an Exception, one may use the `throw` PHP keyword, compiled as a `ZEND_THROW` OPCode.
-`ZEND_THROW` simply gets the exception, and adds it into the *engine executor exception slot*. This slot is alone : weither there is an exception into it, or not. There can't be several exceptions into the slot, the basic line is binary : weither or not there is an exception pending (not 2, 3 or 42).
+`ZEND_THROW` simply gets the exception, and adds it into the *engine executor exception slot*. This slot is alone : either there is an exception into it, or not. There can't be several exceptions into the slot, the basic line is binary : whether or not there is an exception pending (not 2, 3 or 42).
 
 The slot is accessible using the `EG(exception)` macro. If it is NULL : no exception have been thrown so far.
 Here is `ZEND_THROW`, simplified :
@@ -504,8 +504,8 @@ If the exception was uncaught, that is we ran the finally block but no catch bef
 
 Uncaught Exceptions are easy to understand. Like we have seen in the past chapters, uncaught exceptions are managed by the executor calling `zend_leave_helper` , which will make it return from the current execute context.
 
-At the end of the just-run context, we simply sniff the execution slot. If it is filled in with an exception, well, this one has not been handled (caught).
-We then weither call the user exception handler, or generate our fatal error with a call to `zend_exception_error()` :
+At the end of the just-run context, we simply sniff the *exception slot*. If it is filled in with an exception, well, this one has not been handled (caught).
+We then whether call the user exception handler, or generate our fatal error with a call to `zend_exception_error()` :
 
 	/* ... */
 	if (EG(exception)) {
@@ -533,6 +533,8 @@ We then weither call the user exception handler, or generate our fatal error wit
 			zend_exception_error(EG(exception), E_ERROR TSRMLS_CC);
 		}
 	}
+
+Note also that if we failed calling the user exception handler, we end with a fatal error about uncaught exception as well.
 
 ## PHP Exceptions tips and tricks
 

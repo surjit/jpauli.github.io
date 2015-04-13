@@ -178,7 +178,7 @@ Stack trace:
 Now that you have a glance on how the executor works, well, Exceptions are not hard to understand.</p>
 <h3 id="throwing-an-exception">Throwing an Exception<a href="#throwing-an-exception" class="anchor">#</a></h3>
 <p>To throw an Exception, one may use the <code>throw</code> PHP keyword, compiled as a <code>ZEND_THROW</code> OPCode.
-<code>ZEND_THROW</code> simply gets the exception, and adds it into the <em>engine executor exception slot</em>. This slot is alone : weither there is an exception into it, or not. There can't be several exceptions into the slot, the basic line is binary : weither or not there is an exception pending (not 2, 3 or 42).</p>
+<code>ZEND_THROW</code> simply gets the exception, and adds it into the <em>engine executor exception slot</em>. This slot is alone : either there is an exception into it, or not. There can't be several exceptions into the slot, the basic line is binary : whether or not there is an exception pending (not 2, 3 or 42).</p>
 <p>The slot is accessible using the <code>EG(exception)</code> macro. If it is NULL : no exception have been thrown so far.
 Here is <code>ZEND_THROW</code>, simplified :</p>
 <pre><code>ZEND_VM_HANDLER(108, ZEND_THROW, CONST|TMP|VAR|CV, ANY)
@@ -440,8 +440,8 @@ Then, we make the executor go to the OPCode stored into a jump address computed 
 <p>If the exception was uncaught, that is we ran the finally block but no catch before, <code>ZEND_HANDLE_EXCEPTION</code> will have erased <code>EX(fast_ret)</code> setting it to NULL, we then fall into the <code>else</code> part and will barely return.</p>
 <h3 id="uncaught-exceptions">Uncaught Exceptions<a href="#uncaught-exceptions" class="anchor">#</a></h3>
 <p>Uncaught Exceptions are easy to understand. Like we have seen in the past chapters, uncaught exceptions are managed by the executor calling <code>zend_leave_helper</code> , which will make it return from the current execute context.</p>
-<p>At the end of the just-run context, we simply sniff the execution slot. If it is filled in with an exception, well, this one has not been handled (caught).
-We then weither call the user exception handler, or generate our fatal error with a call to <code>zend_exception_error()</code> :</p>
+<p>At the end of the just-run context, we simply sniff the <em>exception slot</em>. If it is filled in with an exception, well, this one has not been handled (caught).
+We then whether call the user exception handler, or generate our fatal error with a call to <code>zend_exception_error()</code> :</p>
 <pre><code>/* ... */
 if (EG(exception)) {
     if (EG(user_exception_handler)) {
@@ -468,6 +468,7 @@ if (EG(exception)) {
         zend_exception_error(EG(exception), E_ERROR TSRMLS_CC);
     }
 }</code></pre>
+<p>Note also that if we failed calling the user exception handler, we end with a fatal error about uncaught exception as well.</p>
 <h2 id="php-exceptions-tips-and-tricks">PHP Exceptions tips and tricks<a href="#php-exceptions-tips-and-tricks" class="anchor">#</a></h2>
 <p>Ok, here we go. Like always, PHP is not perfect, and can't be either. There are some scenarios that are known to be a little bit strange.</p>
 <h3 id="stack-traces">Stack traces<a href="#stack-traces" class="anchor">#</a></h3>
