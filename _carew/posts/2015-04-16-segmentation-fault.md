@@ -97,7 +97,7 @@ In task A memory, memory index for example 11K, is just a fake address. This is 
 
 **Every program running on the machine plays with fake, virtual address**. With the help of some hardware chips, the OS will trick the process when this latter will try to access any zone of memory.
 
-The OS will virtualize memory, and will garantee every task that it can't access memory is doesn't own : the virtualization of memory has allowed process isolations : task A can't access task B's memory anymore, nether can it access the OS own memory. And everything is totally transparent to the user-level tasks, thanks to tons of complex OS Kernel code.
+The OS will virtualize memory, and will guarantee every task that it can't access memory is doesn't own : the virtualization of memory has allowed process isolations : task A can't access task B's memory anymore, nether can it access the OS own memory. And everything is totally transparent to the user-level tasks, thanks to tons of complex OS Kernel code.
 
 Thus, the OS will have to come on scene for every process memory demand. It will then have to be very efficient, not to slow down too much the different programs running, and to achieve this, it will get helped by the hardware : mainly by the CPU and some electronical device around it, like the MMU (Memory Management Unit).
 MMU appeared then in early 70's, with IBM, as separated chips. They are now embed directly into our CPU chips, and are mandatory for any modern OS to run.
@@ -209,7 +209,7 @@ To achieve this, the OS has to implement one more feature : segment protection b
 The OS will, for each physical segment it creates, register the bound/limit for the MMU translation unit to work correctly, but it will also register a permission flag.
 
 As the code is not modifiable, the code segments are all created with the RX permission flag. The process can load those memory areas for eXecution, but any process trying to Write into such memory area, will be shout at by the OS.
-The other two segments : heap and stack are RW, the processes can read and write from their own stack/heap , but they can't execute code from it (this prevents program security flaws, where a bad user may want to corrupt the heap or the stack to inject code to run, mainly to be given root access : this is not possible as the heap and stack segments often are not eXecutable. Note that this has not been always the case in history).
+The other two segments : heap and stack are RW, the processes can read and write from their own stack/heap , but they can't execute code from it (this prevents program security flaws, where a bad user may want to corrupt the heap or the stack to inject code to run, mainly to be given root access : this is not possible as the heap and stack segments often are not eXecutable. Note that this has not always been the case in history).
 
 Memory segments permissions are changeable at runtime : the task may call for [mprotect()](http://man7.org/linux/man-pages/man2/mprotect.2.html) from the OS.
 
