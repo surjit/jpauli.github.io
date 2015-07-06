@@ -77,10 +77,10 @@ Let's now analyze how function calls work in PHP, and how they are different fro
 ## PHP function calls in deep
 
 Let me warn you : function calls are complex in PHP. If you want to continue reading this part, you'd better fasten your seat belt ;-)
-In PHP's design and source code, the most complex VM (VM = Virtual Machine = PHP execution stage code) part to analyze is all that's related to function calls.
+In PHP's design and source code, the most complex execution part to analyze is all that's related to function calls.
 I will try to sumarize things here, so that you get enough info to understand, without all the full details related to function calls. You still can fetch them by analyzing the source code.
 
-Here, we will talk about *runtime* of a function call. You should know that the *compile time* PHP function related operations are also heavy to run for the machine (I mean, really heavy), but as you use an OPCode cache, you don't suffer from anything related to compile time.
+Here, we will talk about *runtime* of a function call. You should know that the *compile time* PHP function related operations are also heavy to run for the machine (I mean, really heavy), but as you use an OPCode cache, you don't suffer from anything related to compile time (that is transformation of the PHP source code into Zend VM instructions).
 So here, we assume the script is compiled, and we'll analyze what happens at _runtime_ only.
 
 Let's just dump the OPCode of an internal function call (``strlen()``, here) :
@@ -96,12 +96,15 @@ To understand function calls, one should know those points :
 
 *	Function calls and method calls are exactly the same
 *	User functions calls and internal functions calls are differently handled
+*	Function calls requires the creation/destruction of a VM stack frame (a memory space where to store variables passed to the function).
 
 That's why I talked about an "internal" function call in my last statement, because I show an example of a call to an internal PHP function, that is a PHP function that's designed in C, here : PHP's ``strlen()``. If we were dumping the OPCode of a "user" PHP function - that is a function that a programmer wrote using the PHP language - OPCode could have been different, but they could have been exactly the same as well.
 
-This is because PHP doesn't generate the same OPCode weither at compile time it knows the function, or not.
+_This is because PHP doesn't generate the same OPCode weither at compile time it knows the function, or not._
 Obviously, internal PHP functions are known at compile time (because they are discovered before the compiler even starts), but that is not necessary true for user functions, which can be called without having been declared before, but after.
 Also, when talking about the execution, internal PHP functions are more efficient than user PHP functions, as well as internal benefit from more validation mechanisms than user functions.
+
+### The Zend VM argument stack frame
 
 Let's continue with the internal functions examples, and the ``strlen()`` one just above.
 On the OPCode shown above, we can see that a function call is not managed using just one OPCode. In fact, there is a first thing you should remember when talking about functions : they own a stack.
@@ -109,7 +112,54 @@ Like in C, or in every language, when you want to call a function, you first hav
 Then, you call the function, and this one will most likely pop those arguments from the stack, to use them.
 Once the function call is done, you have to destroy the stack frame you allocated to it.
 
-This is the main rule of doing things, but PHP optimizes the stack frame creation and deletion and delay those operations so that they don't get called at every function call.
+This is the main rule of doing things, but PHP optimizes the stack frame creation and deletion and delays those operations.
+
+When the PHP compiler compiles a script, it knows how many function calls will happen, and how many args those will need. For example, in such a code :
+
+	function foo() { }
+	
+	foo('bar', false);
+
+The compiler knows you are going to call foo() with two arguments (whatever number was declared in the function body). So the compiler tells the engine that the stack frame for this file will be of exactly two arguments. This number is always known by the compiler, even if you use variable argument passing.
+
+The compiler does it by filling this number into the OPArray, (which is the main structure used by the executor), and when the VM will create the stack frame for this OPArray, it will know how many slots to allocate for the variables.
+
+So PHP's stack frame creation for function argument passing is well optimized, there is nothing to compute at execution time, but at compile time.
+Even better, the stack frame is allocated in some "permanent" memory pools. That means that when the stack frame is destroyed : when the function call ends, the engine doesn't free the argument list memory, it keeps it warm for further reuse. That prevents some memory allocation and free, back and forth, which is something really bad for a process overall performances.
+A structure exists for the VM stack frame, as well as an API
+
+	struct _zend_vm_stack {
+		void **top;
+		void **end;
+		zend_vm_stack prev;
+	};
+
+	static zend_always_inline void *zend_vm_stack_alloc(size_t size TSRMLS_DC)
+	{
+		void *ret;
+
+		size = (size + (sizeof(void*) - 1)) / sizeof(void*);
+
+		if (ZEND_MM_ALIGNMENT > sizeof(void*)) {
+			/* ... ... */
+		} else {
+			ZEND_VM_STACK_GROW_IF_NEEDED((int)size);
+		}
+		ret = (void*)EG(argument_stack)->top;
+		EG(argument_stack)->top += size;
+		return ret;
+	}
+
+	#define ZEND_VM_STACK_GROW_IF_NEEDED(count)							\
+		do {															\
+			if (UNEXPECTED((count) >									\
+				EG(argument_stack)->end - EG(argument_stack)->top)) {	\
+				zend_vm_stack_extend((count) TSRMLS_CC);				\
+			}															\
+	} while (0)
+
+So finally, stack frame management is not that heavy in PHP, what however can be, is argument passing.
+
 
 **SEND_VAR** is an opcode that is responsible of pushing args onto the stack frame. The compiler inevitably generates such an OPCode before a function call. And there will be as many of them as there are variables to pass to the function. See :
 
@@ -164,17 +214,17 @@ We'll just foresee **SEND_VAR**. What does **SEND_VAR** do ?
 
 
 It checks if your variable is a reference or not. If it is, it separates it, creating a reference mismatch, and that's bad. [I explain
-that in this article](http://jpauli.github.io/2014/06/27/references-mismatch.html).
+that in this article](http://jpauli.github.io/2014/06/27/references-mismatch.html). That increases the price to pay for function calls in PHP, argument copies because of reference mismatch are really bad for performances.
 Then it adds a refcount to the variable, and pushes it onto the VM stack :
 
 	Z_ADDREF_P(varptr);
 	zend_vm_stack_push(varptr TSRMLS_CC);
 
-Yes, everytime you call a function, you increment the refcount of every stack argument variable by one : because the function stack itself will reference the variable, not yet the function code, just the stack at the moment.
+Yes, everytime you call a function, you increment the refcount of every stack argument variable by one : because the function stack itself will reference the variable, not yet the function code, just the stack at the moment. Also, as you can see and would have guessed, we push pointers onto the stack, not the argument itself, that's why we add a reference to it. Remember the stack frame slots have already been reserved and just wait to be filled in by pointers to variables, by the different SEND OPCodes. If no argument mismatch happening, pushing an arg onto the stack frame is pretty light, you end-up just adding a reference to it, and copying (in C) a pointer variable.
 
-Pushing the variable onto the stack is pretty light, but the stack consumes some memory. It is allocated at execution time, but its size is computed at compile time.
+### Performing the function call
 
-After pushing the args onto the stack, we run **DO_FCALL**, and here, you'll see how many tons of code and checks are performed, allowing us to assume PHP function calls are a "slow" statement :
+After pushing the args onto the stack, we run a **DO_FCALL** OPCode, and here, you'll see how many tons of code and checks are performed, allowing us to assume PHP function calls are a "slow" statement :
 
 	ZEND_VM_HANDLER(60, ZEND_DO_FCALL, CONST, ANY)
 	{
@@ -260,7 +310,7 @@ I told you, internal functions (those designed in C) take a different execution 
 
 	fbc->internal_function.handler(opline->extended_value, ret->var.ptr, (fbc->common.fn_flags & ZEND_ACC_RETURN_REFERENCE) ? &ret->var.ptr : NULL, EX(object), RETURN_VALUE_USED(opline) TSRMLS_CC);
 
-This line above is the line that calls the internal function handler. For our ``strlen()`` example, this above line call the ``strlen()`` source code :
+This line above is the line that calls the internal function handler. For our ``strlen()`` example, this above line calls to run the ``strlen()`` source code :
 
 	/* PHP's strlen() source code */
 	ZEND_FUNCTION(strlen)
@@ -275,7 +325,7 @@ This line above is the line that calls the internal function handler. For our ``
 		RETVAL_LONG(s1_len);
 	}
 
-And what does ``strlen()`` ? It pops the argument stack using ``zend_parse_parameters()``.
+And what does ``strlen()`` do ? It pops the argument stack using ``zend_parse_parameters()``.
 And this zend_parse_parameters() function is "slow", because it has to pop the stack and transform the argument to a type which is expected by the function : for ``strlen()`` : a string.
 So whatever the programmer passed onto the stack to ``strlen()``, this one could need to convert the argument to a string, which is not a light process in term of performance.
 [Read the source of zend_parse_parameters()](http://lxr.php.net/xref/PHP_5_5/Zend/zend_API.c#729) to have an idea on how many operations we ask our CPU to do, when poping the arguments from a function stack frame.
@@ -433,8 +483,7 @@ At the time the optimizer shows in, it just can't answer those questions, that i
 
 OPCache optimizer already optimizes many things, but by the heavilly dynamic nature of the PHP language, we can't optimize everything, at least not as much as in Java's compilers, or even C's compilers.
 
-That's why when I hear proposal to add strong typing to the language, I like it, because it will boost the performance.
-But PHP will never be a strongly typed language ;-)
+That's why when I hear proposal to add strong typing to the language, I like it, because it will boost the performance. PHP 7 added some more typing, and took benefit from it for optimizing things because now, types may be known at compile time.
 
 Also, proposal such as adding a read-only hint to class property declaration :
 
