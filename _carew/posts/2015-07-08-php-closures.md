@@ -83,18 +83,21 @@ And with every new handler, usually comes a default implementation of it, that i
 		return SUCCESS;
 	}
 
-As you may have spotted it, what this handler does is that it looks up the class function table, to try to find a function named ``__invoke()``. If found, it fills in the **fptr_ptr** pointer the engine is expecting to be given back : that's the pointer to the function to run.
+As you may have spotted it, what this handler does is that it looks up the class function table, to try to find a function named ``__invoke()``. If found, it fills in the **fptr_ptr** pointer the engine is expecting to be given back : that's the pointer to the function to run. What we can notice as well, is that the engine will fill-in ``ce_ptr`` and ``zobj_ptr`` , which both represent the calling scope and the current object to feed ``$this`` in. We'll talk about those later on.
 
 The engine executor makes use of this handler and the function pointer it retrieves, in the OPCode that is dispatched when a dynamic function call is made : **ZEND_INIT_FCALL_BY_NAME**
-The engine checks the argument type, against a string representing a function, against an array representing a class and a method to launch, and finally, against an object defining a ``get_closure()`` handler :
+The engine checks the argument type, against a string representing a function, against an array representing a class and a method to launch, and finally against an object defining a ``get_closure()`` handler :
 
 	ZEND_VM_HANDLER(59, ZEND_INIT_FCALL_BY_NAME, ANY, CONST|TMP|VAR|CV)
 	{
-	/* code to take care of string and array arguments */
+
+	/* ... here, code to take care of string and array arguments ... */
+
 	} else if (OP2_TYPE != IS_CONST && OP2_TYPE != IS_TMP_VAR &&
 		EXPECTED(Z_TYPE_P(function_name) == IS_OBJECT) && /* we are an object ? */
 		Z_OBJ_HANDLER_P(function_name, get_closure) && /* we have a get_closure() handler ? */
-		Z_OBJ_HANDLER_P(function_name, get_closure)(function_name, &call->called_scope, &call->fbc, &call->object TSRMLS_CC) == SUCCESS) { /* the handler is all right ? */
+		Z_OBJ_HANDLER_P(function_name, get_closure)(function_name, &call->called_scope, &call->fbc, &call->object TSRMLS_CC) == SUCCESS) { 
+			/* the handler can take care of the call ? */
 		
 		/* ... */
 	}
@@ -114,10 +117,10 @@ What we have however, are the mechanisms needed for objects to be invokable. Tha
 	$f();
 
 This will work, because the default ``zend_std_get_closure()`` handler is added to every class not telling something else, so it is added to every userland class (class designed using the PHP language).
-It can be different when designing extensions, here, we can change this default handler to provide another one of ours.
+It can be different when designing PHP extensions, where in we can change this default handler to provide another one of ours.
 
 For real PHP anonymous functions to work, there needs to be a base class every closure will use, and some more magic.
-Let's have a tour and meet the zend_closure object.
+Let's have a tour and meet the ``zend_closure`` object.
 
 	typedef struct _zend_closure {
 		zend_object    std;
@@ -126,12 +129,12 @@ Let's have a tour and meet the zend_closure object.
 		HashTable     *debug_info;
 	} zend_closure;
 
-This is a Closure into the Zend Engine. A standard object, then a zend_function, a pointer to ``$this`` into the anonymous function body and some debug info.
+This is a Closure into the Zend Engine. A standard object, then a function : ``zend_function``, a pointer to ``$this`` into the anonymous function body and some debug info.
 
 That's all needed for the engine to work, but there is once again more work to do. We forgot two things here : what about PHP's reflection ? And what about PHP's anonymous function type ?
 
-To fully support closures and merge their concept into the engine, we need a Closure class.
-That class is just here, because anonymous functions must be of type "something", and the type "object" has been chosen, then, a class is needed.
+To fully support closures and merge their concept into the engine, we need a base ``Closure`` class.
+That class is just here, because anonymous functions must be of type "something", and the type "object" has been chosen, then a class is needed.
 If we don't talk about PHP's reflection, and other PHP features (like the rebinding of ``$this`` into closures), what we simply need is a nearly empty class, to support PHP's anonymous functions.
 A class which could'nt be user manipulable, that's why we declared it as final, and we changed nearly all its handlers to forbid everything on it. Have a look :
 
@@ -142,23 +145,23 @@ A class which could'nt be user manipulable, that's why we declared it as final, 
 		INIT_CLASS_ENTRY(ce, "Closure", closure_functions); /* the class is named "Closure" */
 		zend_ce_closure = zend_register_internal_class(&ce TSRMLS_CC);
 		zend_ce_closure->ce_flags |= ZEND_ACC_FINAL_CLASS; /* The class is final */
-		zend_ce_closure->create_object = zend_closure_new;
-		zend_ce_closure->serialize = zend_class_serialize_deny;
-		zend_ce_closure->unserialize = zend_class_unserialize_deny;
+		zend_ce_closure->create_object = zend_closure_new; /* function to run when an object is created */
+		zend_ce_closure->serialize = zend_class_serialize_deny; /* function to run on serialize() call */
+		zend_ce_closure->unserialize = zend_class_unserialize_deny; /* function to run on unserialize() call */
 
 		memcpy(&closure_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
-		closure_handlers.get_constructor = zend_closure_get_constructor;
-		closure_handlers.get_method = zend_closure_get_method;
-		closure_handlers.write_property = zend_closure_write_property;
-		closure_handlers.read_property = zend_closure_read_property;
-		closure_handlers.get_property_ptr_ptr = zend_closure_get_property_ptr_ptr;
-		closure_handlers.has_property = zend_closure_has_property;
-		closure_handlers.unset_property = zend_closure_unset_property;
-		closure_handlers.compare_objects = zend_closure_compare_objects;
-		closure_handlers.clone_obj = zend_closure_clone;
-		closure_handlers.get_debug_info = zend_closure_get_debug_info;
-		closure_handlers.get_closure = zend_closure_get_closure;
-		closure_handlers.get_gc = zend_closure_get_gc;
+		closure_handlers.get_constructor = zend_closure_get_constructor; /* function to run when fetching the constructor */
+		closure_handlers.get_method = zend_closure_get_method; /* function to run when fetching a method */
+		closure_handlers.write_property = zend_closure_write_property; /* function to run when willing to write to an attribute */
+		closure_handlers.read_property = zend_closure_read_property; /* function to run when willing to read from an attribute */
+		closure_handlers.get_property_ptr_ptr = zend_closure_get_property_ptr_ptr; /* function to run when fetching an attribute */
+		closure_handlers.has_property = zend_closure_has_property; /* function to run when willing to test for an attribute existence */
+		closure_handlers.unset_property = zend_closure_unset_property; /* function to run when willing to unset an attribute */
+		closure_handlers.compare_objects = zend_closure_compare_objects; /* function to run when comparing two objects of this class */
+		closure_handlers.clone_obj = zend_closure_clone; /* function to run when willing to clone an object of this class */
+		closure_handlers.get_debug_info = zend_closure_get_debug_info; /* function to run when var_dump()ing an object of this class*/
+		closure_handlers.get_closure = zend_closure_get_closure; /* function to run when willing to launch a method call from an object of this class */
+		closure_handlers.get_gc = zend_closure_get_gc; /* function to run when the garbage collector fires in */
 	}
 
 You can see that when registering this class into the engine (automaticaly done when the engine starts), it provides ``zend_class_serialize_deny()`` and ``zend_class_unserialize_deny()``. So it will be impossible to both ``serialize()`` and ``unserialize()`` any objects of Closure.
@@ -219,10 +222,10 @@ Ok, here we can see that once more, thanks to Zend engine 2 object handlers, we 
 
 Now, we're gonna see how the compiler compiles a PHP function into an object of class Closure when it sees it is an anonymous function, and how it is then launched.
 
-When the compiler compiles a function, its main role is to create a zend_function based variable, and fill-in its OPArray.
-That's also done for anonymous function.
+When the compiler compiles a function, its main role is to create a ``zend_function`` based variable, and fill-in its OPArray. The OPArray represent all the instructions that are part of the function body.
+So the compiler starts by firing a ``zend_do_begin_function_declaration()`` call , then it parses the body of the function, and finally it calls for ``zend_do_end_function_declaration()`` and ``zend_do_early_binding()``. That's true for classical PHP functions.
 
-The steps that change from regular functions, is that the compiler will name the function "{closure}" (as it couldn't fetch a name from the syntax, because you know : "anonymous" function) , and it will NOT register that function into the global function table, nor will it try to early bind it.
+For anonymous functions though, the steps that change from regular functions is that the compiler will name the function "{closure}" (as it couldn't fetch a name from the syntax, because you know : "anonymous" function) , and it will NOT register that function name into the global function table (this step is done while early binding the function).
 
 So the compiler will compile many anonymous functions, without adding their name to the global function table (obviously : they all got the same name). That seems like leaking and doing useless things. Not really, as the compiler for such functions, will generate a special OPCode for the executor to do some job later : **ZEND_DECLARE_LAMBDA_FUNCTION**
 
@@ -245,25 +248,26 @@ When meeting an anonymous function, the parser will call for ``zend_do_begin_lam
 		zend_op       *current_op;
 
 		function_name.op_type = IS_CONST;
-		ZVAL_STRINGL(&function_name.u.constant, "{closure}", sizeof("{closure}")-1, 1);
+		ZVAL_STRINGL(&function_name.u.constant, "{closure}", sizeof("{closure}")-1, 1); /* the function will be named '{closure}' */
 
+		/* classical compilation steps, shared with classical named PHP functions */
 		zend_do_begin_function_declaration(function_token, &function_name, 0, return_reference, NULL TSRMLS_CC);
 
 		result->op_type = IS_TMP_VAR;
 		result->u.op.var = get_temporary_variable(current_op_array);
 
 		current_op = &current_op_array->opcodes[current_op_number];
-		current_op->opcode = ZEND_DECLARE_LAMBDA_FUNCTION;
+		current_op->opcode = ZEND_DECLARE_LAMBDA_FUNCTION; /* OPCode generation */
 		zend_del_literal(current_op_array, current_op->op2.constant);
 		SET_UNUSED(current_op->op2);
 		SET_NODE(current_op->result, result);
-		if (is_static) {
+		if (is_static) { /* static closures case */
 			CG(active_op_array)->fn_flags |= ZEND_ACC_STATIC;
 		}
 		CG(active_op_array)->fn_flags |= ZEND_ACC_CLOSURE;
 	}
 
-We can see that the compiler effectively calls fro generic function declaration function, ``zend_do_begin_function_declaration()``, but generates an OPCode **ZEND_DECLARE_LAMBDA_FUNCTION**.
+We can see that the compiler effectively calls for generic function declaration function, ``zend_do_begin_function_declaration()``, but generates an OPCode **ZEND_DECLARE_LAMBDA_FUNCTION**.
 This is very different from classical named functions, where no OPCode at all is generated (if the function is not declared conditionnaly), and where the function name is registered into the global function table for it to be looked for later, when called into the executor.
 
 > So, anonymous functions require some runtime job, whereas non-anonymous classical PHP functions don't.
@@ -301,11 +305,9 @@ As we can notice, the executor's OPCode handler for **ZEND_DECLARE_LAMBDA_FUNCTI
 
 		closure->func = *func; /* pass its function ; here the belt is buckled */
 		closure->func.common.prototype = NULL;
-		closure->func.common.fn_flags |= ZEND_ACC_CLOSURE;
+		closure->func.common.fn_flags |= ZEND_ACC_CLOSURE; /* flag the zend_function as beeing of type closure */
 
 		if ((scope == NULL) && (this_ptr != NULL)) {
-			/* use dummy scope if we're binding an object without specifying a scope */
-			/* maybe it would be better to create one for this purpose */
 			scope = zend_ce_closure;
 		}
 
@@ -380,6 +382,8 @@ When the compiler creates a standard, named, PHP function ; it looks if this fun
 
 What happens for closures however, is that the current scope (the class) and ``$this`` are both bound at runtime, by the **ZEND_DECLARE_LAMBDA_FUNCTION** OPCode. Look :
 
+	/* void zend_create_closure(zval *res, zend_function *func, zend_class_entry *scope, zval *this_ptr TSRMLS_DC); */
+	
 	ZEND_VM_HANDLER(153, ZEND_DECLARE_LAMBDA_FUNCTION, CONST, UNUSED)
 	{
 		/* ... */
@@ -387,7 +391,7 @@ What happens for closures however, is that the current scope (the class) and ``$
 		if (UNEXPECTED((op_array->common.fn_flags & ZEND_ACC_STATIC) || 
 				(EX(prev_execute_data) &&
 				 EX(prev_execute_data)->function_state.function->common.fn_flags & ZEND_ACC_STATIC))) {
-			/* if we are creating a closure into a static call - or we declared the closure explicitely static, pass the called_scope to the closure body */
+			/* if we are creating a closure into a static call -or we declared the closure explicitely static- pass the called_scope to the closure body */
 			zend_create_closure(&EX_T(opline->result.var).tmp_var, (zend_function *) op_array,  EG(called_scope), NULL TSRMLS_CC);
 		} else {
 			/* else, pass the object scope to the closure body */
@@ -433,30 +437,27 @@ If the closure is declared static itself, it will never receive any ``$this`` po
 	
 	$foo = new Foo;
 	
-	$closure = $foo->hello(); /* the $closure has no $this, because it was declared static itself */
+	$closure = $foo->hello(); /* the $closure has no $this access, because it was declared static itself */
 
 Now let's talk about the scope, that is the current class where in the Closure resides (which is used to check for PPP access).
 The scope is the class's which was used for the call to create the closure, like in the example above, with Foo and Bar classes.
 
 > The scope is the current calling class, it is used to check for public/private/protected access rights (PPP).
 
-Remember that both scope and ``$this`` pointer are important, as they will serve when the Closure will get called. They even can be changed at runtime, starting from PHP 5.4, using ``bind()``
+Remember that both scope and ``$this`` pointer are important, as they will serve when the Closure will get called. They even can be changed at runtime, starting from PHP 5.4, using ``bind()`` or ``bindTo()``
 
 	class Foo { private $a = 42; }
 	$foo = new Foo;
 	
-	class Bar { }
-	$bar = new Bar;
+	$closure = function() { var_dump($this->a); };
 	
-	$a = function() { var_dump($this->a); };
-	
-	$foo_closure = $a->bindTo($foo);
+	$foo_closure = $closure->bindTo($foo);
 	
 	$foo_closure(); /* 42 */
 
 The above code displays 42.
 
-The ``$a`` closure was created out of any context, so its ``$this`` and its scope are both NULL. This closure is actually "static" : it has no object scope and can't access any ``$this`` variable at the moment.
+The ``$closure`` closure was created out of any context, so its ``$this`` and its scope are both NULL. This closure is actually unbound : it has no object scope and can't access any ``$this`` variable at the moment.
 
 Using ``bindTo()``, we create another closure from this one, but we explicitely bind its ``$this`` variable to the ``$foo`` object; thus, calling this new created closure works : it can access a ``$this`` now.
 But is it allowed to read the private property ? Yes it is, because the scope is also good. ``bindTo()`` accepts a second parameter : the scope, which will default to the class of the object passed as first parameter : to us : Foo class. Into Foo, I can access Foo's privates : no problem. Let's change that behavior :
@@ -465,15 +466,15 @@ But is it allowed to read the private property ? Yes it is, because the scope is
 	$foo = new Foo;
 	
 	class Bar { }
-	$bar = new Bar;
 	
-	$a = function() { var_dump($this->a); };
+	$closure = function() { var_dump($this->a); };
 	
-	$foo_closure = $a->bindTo($foo, 'Bar'); /* Pass the scope of Bar */
+	$foo_closure = $closure->bindTo($foo, 'Bar'); /* Pass the scope of Bar */
 	
 	$foo_closure(); /* fatal error, accessing a private member */
 
 Now the new closure still has a ``$this`` representing ``$foo``, but the scope it will act into is the scope of Bar. Hence, in Bar, you can't access Foo's $a, as both Foo's $a is private, and Bar doesn't even extend Foo.
+
 This scoping functionnality is presented to the PHP user for the first time here. All those mechanisms used to be hidden and automatic before, when you use classical objects and methods , but with closures, things change as closures are by definition functions or methods that can be carried from class to class at runtime : you are then dealing manually with the scopes.
 
 > PHP7 added Closure::call(object $to[, mixed ...$parameters])
