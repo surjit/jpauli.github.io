@@ -10,16 +10,16 @@ You may also use libraries such as the [well known bstring](http://bstring.sourc
 
 In C, strings are simple NULL-terminated char arrays, like you know. However, when designing a scripting language such as PHP, the need to manage those strings arises. In management, we think about classical operations, such as concatenation, extension or truncation ; and eventually more advanced concepts, such as special allocation mechanisms, string interning or string compression. Libc answers the easy operations (concat, search, truncate), but complex operations are to be developped by yourself.
 
-Let's see together how strings are implemented into PHP5, and the main differences with PHP7.
+Let's see together how strings are implemented into PHP 5, and the main differences with PHP 7.
 
-## The PHP5 way
+## The PHP 5 way
 
-In PHP5, strings don't have their own C structure. Yes I know, that may seem extremely surprising, but that's the case.
+In PHP 5, strings don't have their own C structure. Yes I know, that may seem extremely surprising, but that's the case.
 We keep playing with traditional C NULL-terminated char arrays, also often written as _char *_.
 However, we support what is called _"binary strings"_ , those are strings that can embed the NULL character.
 Strings embeding the NULL char can't be directly passed to libc classical functions anymore, but need to be addressed by special functions (that exist in libc as well) taking care of the length of the string.
 
-Hence PHP5 memorizes the size of the string, together with the string itself (the _char *_).
+Hence PHP 5 memorizes the size of the string, together with the string itself (the _char *_).
 Obviously, as PHP doesn't support Unicode natively, the string stores each C ASCII character, and the length stores the number of characters, as we always assume one char = one byte : the plain 50-year-old C concept of a "string". If one graphical character (what Unicode calls "Grapheme") were to be stored in more than one byte, then every concept presented here falls down to just being wrong. We always assume that one graphical character equals one byte (no Unicode support). Also, remember that _char *_ buffers can contain any byte, not just only printable characters.
 
 > One char equals one byte. This statement is always true, worldwide, whatever the machine / the platform. When not talking about Unicode but plain ASCII, one char = one printable character.
@@ -38,14 +38,14 @@ So, we end-up having something like :
 		zend_ast *ast;
 	} zvalue_value;
 
-I lied a little bit when I said PHP doesn't manage strings using its own structure. In fact, in PHP5, a string is used in the _str_ field of the zval (the PHP variable container).
+I lied a little bit when I said PHP doesn't manage strings using its own structure. In fact, in PHP 5, a string is used in the _str_ field of the zval (the PHP variable container).
 Graphically, this could give :
 
 ![strings_php5](../../../img/php-strings/strings_php5.png)
 
-### Problems in the PHP5 way
+### Problems in the PHP 5 way
 
-This model has several problems, some are addressed in later PHP5 versions, and others in the new PHP7 implementation we'll talk about later.
+This model has several problems, some are addressed in later PHP 5 versions, and others in the new PHP 7 implementation we'll talk about later.
 
 #### Integer size
 
@@ -55,7 +55,7 @@ On LP64 (~Linux/Unix), an integer weights 4 bytes, but on ILP64 (SPARC64), it we
 #### No uniform structure
 
 Second problem : as soon as we don't use the zval container (and its _str_ field), we end-up beeing back in classical C and managing string the traditionnal way.
-As we support binary strings nearly everywhere into the engine, it is not rare, in PHP5, to see again the same kind of structure, but taken out of the zval container.
+As we support binary strings nearly everywhere into the engine, it is not rare, in PHP 5, to see again the same kind of structure, but taken out of the zval container.
 Examples :
 
 	struct _zend_class_entry {
@@ -77,7 +77,7 @@ What about hashtables ?
 
 Here again, this *zend_hash_key* structure is used often when it comes to play with hash tables (very very common use-case) ; and here again, we notice that the concept of "PHP string" is once more duplicated : a _const char* arKey_ and its *uint nKeyLength*
 
-So to sum-up this second problem, there is no unified way of representing a string in PHP5. The concept is always the same : a char* buffer and its length ; but this concept is not "globally shared and assumed" across all PHP source code, thus many code duplication happens, as well as one last problem.
+So to sum-up this second problem, there is no unified way of representing a string in PHP 5. The concept is always the same : a char* buffer and its length ; but this concept is not "globally shared and assumed" across all PHP source code, thus many code duplication happens, as well as one last problem.
 
 #### Memory usage
 
@@ -85,7 +85,7 @@ The last problem is memory consumption.
 If PHP meets twice the same string into its life, it will likely store that string twice in memory, or even more than twice.
 Add-up every piece of string you can think about, and you'll notice that this is not so little : memory consumption will suffer from the numbers of different copy of the same piece of string in memory.
 
-For example, if two internal layers communicate each other, the top layer passes a string to the bottom layer. If that bottom layer wants to keep the string for itself, to reuse it later for example (with no intention to modify it), well in PHP5, it has no other way than copying the whole string.
+For example, if two internal layers communicate each other, the top layer passes a string to the bottom layer. If that bottom layer wants to keep the string for itself, to reuse it later for example (with no intention to modify it), well in PHP 5, it has no other way than copying the whole string.
 It can't keep the pointer, because the above layer is free to free the pointer whenever it wants to, and also, the bottom layer would like to free that string whenever it wants to, without having the top layer crash in a use-after-free situation.
 
 Just one quick and easy example to illustrate :
@@ -116,19 +116,19 @@ Opposite problem : if we just store the pointer into the session module without 
 
 Those situations, were strings are duplicated just to be kept hot in memory for further usage, happen often in PHP source code, and if you dump the heap memory of a PHP process in the middle of its lifetime, you will notice lots of memory bytes that contain the exact same string. This is a pure waste of machine main memory.
 
-To solve this last problem, PHP5.4 added a well-known-yet-clever concept to the receipe : interned strings.
-PHP7 on its side, reworked in deep the global "string" concept to finally have a very consistent and memory fair solution.
+To solve this last problem, PHP 5.4 added a well-known-yet-clever concept to the receipe : interned strings.
+PHP 7 on its side, reworked in deep the global "string" concept to finally have a very consistent and memory fair solution.
 
 > Before PHP 5.4, there were no solution nor consistency regarding the management of strings into memory. This resulted in poor performances, both in term of CPU and memory usage, especially when the web application is big.
 
-### Solutions implemented in PHP5 for strings management
+### Solutions implemented in PHP 5 for strings management
 
-PHP5 tried to address the memory consumption problem, and managed to find a clever solution to it.
-For every other problem related in the last chapter just above, only PHP7 solves them, because their solution require massive breaks in the PHP source code, and massive code rewrite.
+PHP 5 tried to address the memory consumption problem, and managed to find a clever solution to it.
+For every other problem related in the last chapter just above, only PHP 7 solves them, because their solution require massive breaks in the PHP source code, and massive code rewrite.
 
 #### Interned strings
 
-Before PHP5.4 , every problem related to string management is present.
+Before PHP 5.4 , every problem related to string management is present.
 Starting from PHP 5.4 , the concept of "interned strings" was implemented, and resulted in less memory consumption, thus solving one of the exposed problem (the biggest one in my opinion).
 
 But, as you will see, interned strings require sharing a global buffer, something which is by definition not thread safe.
@@ -365,13 +365,13 @@ And also drawbacks :
 > The OPCache extension for PHP pushes the interned strings concept even further, by sharing the same interned strings buffer accross several PHP process, and by allowing the user to configure the space of the buffer (using an INI setting) whereas traditionnal PHP doesn't allow that.
 You can read more about this [on the dedicated blog post](http://jpauli.github.io/2015/03/05/opcache.html#sharing-interned-strings).
 
-## The PHP7 way
+## The PHP 7 way
 
-PHP7 changed many things in the way PHP manipulates strings internally.
+PHP 7 changed many things in the way PHP manipulates strings internally.
 
 ### Finally a real shared structure
 
-PHP7 finally centralized the concept of "strings" into PHP, by designing a structure which is used everywhere PHP uses strings :
+PHP 7 finally centralized the concept of "strings" into PHP, by designing a structure which is used everywhere PHP uses strings :
 
 	struct _zend_string {
 		zend_refcounted_h gc;
@@ -392,11 +392,11 @@ The string is not stored into a _char*_ but a _char[1]_, this is a C trick calle
 
 Notice that now, strings embed by default their hash (_h_). So we compute the hash for a given string only once (usually at compile time), and never after that. In PHP, mainly before interned strings (< 5.4), the same string hash was recomputed every time it is needed, that led to tons of CPU cycles burnt for nothing... Pre-computed hashes have pushed overall PHP performances.
 
-Strings are refcounted ! In PHP7, strings are refcounted (as well as many other primitive types). That means that interned strings are still relevant, but less : PHP layers can now pass strings from one to the other, as strings are refcounted, we are plainly sure that noone will accidentaly free the string as this latter is still used elsewhere (until doing an error on purpose).
+Strings are refcounted ! In PHP 7, strings are refcounted (as well as many other primitive types). That means that interned strings are still relevant, but less : PHP layers can now pass strings from one to the other, as strings are refcounted, we are plainly sure that noone will accidentaly free the string as this latter is still used elsewhere (until doing an error on purpose).
 
 This is the concept behind "reference counting" (search the term if needed) : we now count every place where a string is used (stored), so that it will be freed when nobody uses it anymore.
 
-Let's go back to our session module example. Here is its PHP5 code recalled to you, followed by its PHP7 code, just for the part managing strings (what we are looking after) :
+Let's go back to our session module example. Here is its PHP 5 code recalled to you, followed by its PHP 7 code, just for the part managing strings (what we are looking after) :
 
 	/* PHP 5 */
 	static PHP_FUNCTION(session_id)
@@ -430,7 +430,7 @@ Let's go back to our session module example. Here is its PHP5 code recalled to y
 		}
 	}
 
-Like you can see, we use a *zend_string* structure in PHP7, and we use an API : `zend_string_release()` and `zend_string_copy()` with it.
+Like you can see, we use a *zend_string* structure in PHP 7, and we use an API : `zend_string_release()` and `zend_string_copy()` with it.
 
 	static zend_always_inline zend_string *zend_string_copy(zend_string *s)
 	{
@@ -448,35 +448,35 @@ Like you can see, we use a *zend_string* structure in PHP7, and we use an API : 
 		}
 	}
 
-Just a matter of refcounting : the string is passed from external world to PHP session module, and this latter keeps a reference to the string, never needing to fully copy it in memory, like PHP5 does.
+Just a matter of refcounting : the string is passed from external world to PHP session module, and this latter keeps a reference to the string, never needing to fully copy it in memory, like PHP 5 does.
 
 That is a huge step forward in string management in PHP.
 
-> PHP7 added a real structure and API for string management internally. This is a huge step forward in consistency, memory savings and performances.
+> PHP 7 added a real structure and API for string management internally. This is a huge step forward in consistency, memory savings and performances.
 
 If you want to grab the zend_string API, it is inlined (for compilation performance reasons) and stored in [zend_string.h](http://lxr.php.net/xref/PHP_TRUNK/Zend/zend_string.h).
 
 ### Interned strings still matter
 
-Like we saw, strings in PHP7 are now reference counted, and that prevents us from needing to fully duplicate them when wanting to store a "copy" of a string from a layer to the other.
+Like we saw, strings in PHP 7 are now reference counted, and that prevents us from needing to fully duplicate them when wanting to store a "copy" of a string from a layer to the other.
 
-But, interned strings still matter. They are still used in PHP7, and that works nearly the same way as in PHP5; except that we don't use a special buffer anymore, because we can flag a *zend_string* as being interned (the structure now allows us to do so).
+But, interned strings still matter. They are still used in PHP 7, and that works nearly the same way as in PHP 5; except that we don't use a special buffer anymore, because we can flag a *zend_string* as being interned (the structure now allows us to do so).
 
-So, creating an interned string in PHP7, is creating a *zend_string* and flag it with **IS_STR_INTERNED**
+So, creating an interned string in PHP 7, is creating a *zend_string* and flag it with **IS_STR_INTERNED**
 When releasing a *zend_string* using `zend_string_release()`, the API checks if the string is interned and just does nothing if it is the case.
-The interned strings are destroyed barely the same way as in PHP5, simply the process in PHP7 is optimized thanks to new allocation and garbage collection mechanisms.
+The interned strings are destroyed barely the same way as in PHP 5, simply the process in PHP 7 is optimized thanks to new allocation and garbage collection mechanisms.
 
 ### A heavy migration
 
 You got it ? Replacing any place in PHP source code ( ~750K lines) where we used a _char*/int_ by a *zend_string* structure and its API ... was not an easy job.
 You can see some [commit diff](https://github.com/php/php-src/commit/f4cfaf36e23ca47da3e352e1c60909104c059647#diff-b27dcc67dedd7af10b0fb1ec4fd540dc) that are huge about that.
 
-This could definitely not happen in PHP5 source codebase, because *zend_string* simply breaks the ABI, and we don't break the ABI until major versions of PHP.
+This could definitely not happen in PHP 5 source codebase, because *zend_string* simply breaks the ABI, and we don't break the ABI until major versions of PHP.
 
-Migrating PHP extensions is not an easy task neither, *zend_string* is not the only change in PHP 7, and many big centralized structure have changed significantely in PHP7. As the ABI is broken between PHP5 and PHP7, obviously you'll have to rebuild / redownload your favorite extensions for PHP7, PHP5 ones won't load into PHP7 at all.
+Migrating PHP extensions is not an easy task neither, *zend_string* is not the only change in PHP 7, and many big centralized structure have changed significantely in PHP 7. As the ABI is broken between PHP 5 and PHP 7, obviously you'll have to rebuild / redownload your favorite extensions for PHP 7, PHP 5 ones won't load into PHP 7 at all.
 
 ## Conclusions
 
 You now have a glance on how PHP manages strings into its heart. Most of the strings come from the PHP compiler: the user PHP scripts. PHP 5, starting with 5.4, introduced interned strings, which is a concept meaning to save memory by not duplicating strings into memory. Before PHP 5.4, string management was plainly missing in PHP.
 
-Starting with PHP7, PHP added a new structure and a nice reference-counting-based API for string management, resulting in even more memory savings, and nice consistency accross the language.
+Starting with PHP 7, PHP added a new structure and a nice reference-counting-based API for string management, resulting in even more memory savings, and nice consistency accross the language.
