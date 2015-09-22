@@ -382,13 +382,13 @@ PHP7 finally centralized the concept of "strings" into PHP, by designing a struc
 
 3 things are noticeable in the structure above :
 
-*	The length of the string is sotred using a a *size_t* type.
-*	The real C string is not declared as a _char *_ but as _char[1]_.
+*	The length of the string is stored using a *size_t* type.
+*	The real C string is not declared as a _char*_ but as _char[1]_.
 *	It embeds a refcount : _gc_
 
 As length are typed on a *size_t* variable, they weight {platform size} bytes ! Whatever the platform. One of the PHP 5 problems is then solved : under a CPU64, string length will be 8 bytes (64 digits) for every platform (this is one of the definition of the C *size_t* type).
 
-The string is not stored into a _char *_ but a _char[1]_, this is a C trick called a "struct hack" (look for that term if needed). That allows us to allocate the string buffer together with the *zend_string* buffer, and save one pointer along having a contiguous area of memory. Performances++
+The string is not stored into a _char*_ but a _char[1]_, this is a C trick called a "struct hack" (look for that term if needed). That allows us to allocate the string buffer together with the *zend_string* buffer, and save one pointer along having a contiguous area of memory. Performances++
 
 Notice that now, strings embed by default their hash (_h_). So we compute the hash for a given string only once (usually at compile time), and never after that. In PHP, mainly before interned strings (< 5.4), the same string hash was recomputed every time it is needed, that led to tons of CPU cycles burnt for nothing... Pre-computed hashes have pushed overall PHP performances.
 
@@ -477,6 +477,6 @@ Migrating PHP extensions is not an easy task neither, *zend_string* is not the o
 
 ## Conclusions
 
-You now have a glance on how PHP manages strings into its heart. Most of the strings come from the PHP compiler : the user PHP scripts. PHP 5, starting with 5.4, introduced interned strings, which is a concept meaning to save memory by not duplicating strings into memory. Before PHP 5.4, string management was plainly missing in PHP.
+You now have a glance on how PHP manages strings into its heart. Most of the strings come from the PHP compiler: the user PHP scripts. PHP 5, starting with 5.4, introduced interned strings, which is a concept meaning to save memory by not duplicating strings into memory. Before PHP 5.4, string management was plainly missing in PHP.
 
 Starting with PHP7, PHP added a new structure and a nice reference-counting-based API for string management, resulting in even more memory savings, and nice consistency accross the language.
