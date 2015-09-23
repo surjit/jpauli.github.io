@@ -19,16 +19,16 @@
 <p>Strings management has always been a "problem" to consider when designing a C program. If you think about a tiny self-contained C program, just don't bother with strings, use libc functions, or if you need to support Unicode, use libraries such as ICU.
 You may also use libraries such as the <a href="http://bstring.sourceforge.net/">well known bstring</a>, <a href="https://apr.apache.org/docs/apr/2.0/group__apr__strings.html">the APR strings</a> or even <a href="https://developer.gnome.org/glib/2.32/glib-String-Utility-Functions.html">glib strings</a>. Many libraries exist, and once you are a senior C developper, you can easilly build your own library fitting your exact needs.</p>
 <p>In C, strings are simple NULL-terminated char arrays, like you know. However, when designing a scripting language such as PHP, the need to manage those strings arises. In management, we think about classical operations, such as concatenation, extension or truncation ; and eventually more advanced concepts, such as special allocation mechanisms, string interning or string compression. Libc answers the easy operations (concat, search, truncate), but complex operations are to be developped by yourself.</p>
-<p>Let's see together how strings are implemented into PHP 5, and the main differences with PHP 7.</p>
+<p>Let's see together how strings are implemented into the PHP 5 language core, and the main differences with PHP 7.</p>
 <h2 id="the-php-5-way">The PHP 5 way<a href="#the-php-5-way" class="anchor">#</a></h2>
 <p>In PHP 5, strings don't have their own C structure. Yes I know, that may seem extremely surprising, but that's the case.
-We keep playing with traditional C NULL-terminated char arrays, also often written as <em>char *</em>.
+We keep playing the traditional way with C NULL-terminated char arrays, also often written as <em>char *</em>.
 However, we support what is called <em>"binary strings"</em> , those are strings that can embed the NULL character.
 Strings embeding the NULL char can't be directly passed to libc classical functions anymore, but need to be addressed by special functions (that exist in libc as well) taking care of the length of the string.</p>
 <p>Hence PHP 5 memorizes the size of the string, together with the string itself (the <em>char *</em>).
-Obviously, as PHP doesn't support Unicode natively, the string stores each C ASCII character, and the length stores the number of characters, as we always assume one char = one byte : the plain 50-year-old C concept of a "string". If one graphical character (what Unicode calls "Grapheme") were to be stored in more than one byte, then every concept presented here falls down to just being wrong. We always assume that one graphical character equals one byte (no Unicode support). Also, remember that <em>char *</em> buffers can contain any byte, not just only printable characters.</p>
+Obviously, as PHP doesn't support Unicode natively, the string stores each C ASCII character, and the length stores the number of characters, as we always assume one printable char = one byte : the plain 50-year-old C concept of a "string", ASCII based. If one graphical character (what Unicode calls "Grapheme") were to be stored in more than one byte, then every concept presented here falls down to just being wrong. We always assume that one graphical character equals one byte (no Unicode support). Also, remember that <em>char *</em> buffers can contain any byte, not just only printable characters.</p>
 <blockquote>
-<p>One char equals one byte. This statement is always true, worldwide, whatever the machine / the platform. When not talking about Unicode but plain ASCII, one char = one printable character.</p>
+<p>One C char equals one byte. This statement is always true, worldwide, whatever the machine / the platform. When not talking about Unicode but plain ASCII, one char = one printable character.</p>
 </blockquote>
 <p>So, we end-up having something like :</p>
 <pre><code>typedef union _zvalue_value {
@@ -42,33 +42,36 @@ Obviously, as PHP doesn't support Unicode natively, the string stores each C ASC
     zend_object_value obj;
     zend_ast *ast;
 } zvalue_value;</code></pre>
-<p>I lied a little bit when I said PHP doesn't manage strings using its own structure. In fact, in PHP 5, a string is used in the <em>str</em> field of the zval (the PHP variable container).
+<p>I lied a little bit when I said PHP doesn't manage strings using its own structure. In fact in PHP 5, a string is used in the <em>str</em> field of the zval (the PHP variable container).
 Graphically, this could give :</p>
 <p><img alt="strings_php5" src="../../../img/php-strings/strings_php5.png"></p>
 <h3 id="problems-in-the-php-5-way">Problems in the PHP 5 way<a href="#problems-in-the-php-5-way" class="anchor">#</a></h3>
 <p>This model has several problems, some are addressed in later PHP 5 versions, and others in the new PHP 7 implementation we'll talk about later.</p>
 <h4 id="integer-size">Integer size<a href="#integer-size" class="anchor">#</a></h4>
-<p>First thing is that we store the length of the string into an integer , which is platform dependant.
-On LP64 (~Linux/Unix), an integer weights 4 bytes, but on ILP64 (SPARC64), it weights 8 bytes. Things are barely the same for the 32 bits variants. So, depending on your platform, PHP will behave differently. Also, this is pretty uncommon I assume, but you can't store in PHP's string a string which is larger than the size of the integer, aka in Linux LP64, you can't have strings which length would be over 2^31, even though your CPU line is 64 bits large.</p>
+<p>First thing is that we store the length of the string into an integer, which is platform dependant.
+On LP64 (~Linux/Unix), an integer weights 4 bytes, but on ILP64 (SPARC64), it weights 8 bytes. Things are barely the same for the 32 bits variants. So, depending on your platform, PHP will behave differently and have a different memory image, what you wouldn't really expect. That shows a lack of consistency in supporting several platforms (a crucial concept PHP has always tried to carry) and harden debugging.
+Also - this is pretty uncommon I assume - but you can't store in PHP's string a string which is larger than the size of the integer, aka in Linux LP64, you can't have strings which length would be over 2^31, even though your CPU line is 64 bits large.</p>
 <h4 id="no-uniform-structure">No uniform structure<a href="#no-uniform-structure" class="anchor">#</a></h4>
-<p>Second problem : as soon as we don't use the zval container (and its <em>str</em> field), we end-up beeing back in classical C and managing string the traditionnal way.
-As we support binary strings nearly everywhere into the engine, it is not rare, in PHP 5, to see again the same kind of structure, but taken out of the zval container.
+<p>Second problem : as soon as we don't use the zval container (and its <em>str</em> field), we end-up beeing forced to duplicate the concept.
+As we support binary strings nearly everywhere into the engine, it is not rare in PHP 5, to see again the same kind of structure, but taken out of the zval container.
 Examples :</p>
 <pre><code>struct _zend_class_entry {
     char type;
-    const char *name;
-    zend_uint name_length;
+    const char *name;       /* C string buffer, NULL terminated */
+    zend_uint name_length;  /* String length : num of ASCII chars */
 ...</code></pre>
 <p>The above code show a snippet of a PHP class internally : a <em>zend_class_entry</em> structure.
 As you can see, this latter also got its own definition of a string : a <em>char *name</em>, and a <em>zend_uint name_length</em> that stores the length.</p>
 <p>What about hashtables ?</p>
 <pre><code>typedef struct _zend_hash_key {
-    const char *arKey;
-    uint nKeyLength;
+    const char *arKey;  /* C string buffer, NULL terminated */
+    uint nKeyLength;    /* String length : num of ASCII chars */
     ulong h;
 } zend_hash_key;</code></pre>
-<p>Here again, this <em>zend_hash_key</em> structure is used often when it comes to play with hash tables (very very common use-case) ; and here again, we notice that the concept of "PHP string" is once more duplicated : a <em>const char* arKey</em> and its <em>uint nKeyLength</em></p>
-<p>So to sum-up this second problem, there is no unified way of representing a string in PHP 5. The concept is always the same : a char* buffer and its length ; but this concept is not "globally shared and assumed" across all PHP source code, thus many code duplication happens, as well as one last problem.</p>
+<p>Here again, this <em>zend_hash_key</em> structure is used often when it comes to play with hash tables (very very common use-case) ; and here again, we notice that the concept of "PHP string" is once more duplicated : a <em>const char* arKey</em> and its <em>uint nKeyLength</em>.</p>
+<p>Note that in every case, the length is always a typedef that will more-or-less lead to platform integer (<em>zend_uint</em>, <em>uint</em>, <em>int</em>).
+Some even being signed, thus dividing by two the size capacity.</p>
+<p>So to sum-up this second problem, there is no unified way of representing a string in PHP 5. The concept is always the same : a <em>char*</em> buffer together with its length ; but this concept is not "globally shared and assumed" across all PHP source code, thus many code duplication happens, as well as one last problem.</p>
 <h4 id="memory-usage">Memory usage<a href="#memory-usage" class="anchor">#</a></h4>
 <p>The last problem is memory consumption.
 If PHP meets twice the same string into its life, it will likely store that string twice in memory, or even more than twice.
@@ -98,7 +101,7 @@ It can't keep the pointer, because the above layer is free to free the pointer w
 This is done by fully duplicating the passed string (the function is <code>estrndup()</code> , this function duplicates a string into memory).
 Why duplicate it ? Because if we change the session id again, well, we'll free the last id, but if this last id string were used elsewhere (in your PHP variables), then you will crash reading free'ed memory.
 Opposite problem : if we just store the pointer into the session module without duplicating the string it points to, what happens if you - PHP user - destroy the variable this $id was stored in ? We'll end up in the exact same (upside down) situation : Session module is going to use a free()'ed pointer, and then is going to crash.</p>
-<p>Those situations, were strings are duplicated just to be kept hot in memory for further usage, happen often in PHP source code, and if you dump the heap memory of a PHP process in the middle of its lifetime, you will notice lots of memory bytes that contain the exact same string. This is a pure waste of machine main memory.</p>
+<p>Those situations, where strings are duplicated just to be kept hot in memory for further usage, happen often in PHP source code. If you dump the heap memory of a PHP process in the middle of its lifetime, you will notice lots of memory bytes that contain the exact same string. This is a pure waste of machine main memory.</p>
 <p>To solve this last problem, PHP 5.4 added a well-known-yet-clever concept to the receipe : interned strings.
 PHP 7 on its side, reworked in deep the global "string" concept to finally have a very consistent and memory fair solution.</p>
 <blockquote>
@@ -121,7 +124,7 @@ Thus, at the moment, interned strings are not supported by ZTS PHP.</p>
 But, how did PHP implement this concept, back in PHP 5.4 ?
 Let's see that together.</p>
 <blockquote>
-<p>Interning a string is ensuring this string will never be stored in memory more than once per process. For softwares managing big strings, or many strings, this can represent a nice memory saving as well as better performances regarding any string manipulation.</p>
+<p>Interning a string is ensuring this string will never be stored in memory more than once per process. For softwares managing big strings, or many strings (like PHP does), this can represent a nice memory saving as well as better performances regarding any string manipulation.</p>
 </blockquote>
 <p>The concept is easy. Whenever we meet a string, instead of creating it with a classical <code>malloc()</code> (we are assuming dynamic strings that can't really be stack allocated), we store the string into a bound buffer and add it to a dictionnary (which is a hashtable). If the string is already present in the dictionnary, the API returns its pointer, effectively preventing us from creating yet another copy of such a string in memory.</p>
 <p>However, only persistent strings can be stored in this interned strings buffer, because you know PHP will free the request-bound memory between each request, when we are actually in the process of treating a request, no interned strings must be created as their pointers need to be freed at the end of the request. To accomplish that, we use a snapshot buffer that is reseted to its position at the end of the current request. So interned strings do work for request-scope allocations, but they are less efficient than "persistent" strings that get allocated at PHP startup and reused until PHP dies, because request-allocated interned strings are freed at the end of the current request and thus have a smaller lifecycle.</p>
@@ -141,7 +144,7 @@ Let's see that together.</p>
     CG(interned_strings).nTableMask = CG(interned_strings).nTableSize - 1;
     CG(interned_strings).arBuckets = (Bucket **) pecalloc(CG(interned_strings).nTableSize, sizeof(Bucket *), CG(interned_strings).persistent);
 }</code></pre>
-<p>I did truncate some code to ease understanding. What you first must spot, is that the interned string buffer is 1Mb large (1024*1024) and cannot be changed by the PHP user (INI setting). Effectively, when this buffer will be full, it will NOT be resized, and from that point the interned strings API will behave like if there is no interned strings : it will lead us to having malloc()ed our strings.</p>
+<p>What you first must spot, is that the interned string buffer is 1Mb large (1024*1024) and cannot be changed by the PHP user (INI setting). Effectively, when this buffer will be full, it will NOT be resized, and from that point the interned strings API will behave like if there is no interned strings : it will lead us to having malloc()ed our strings.</p>
 <p>Now, to create an interned string, we internally use <code>zend_new_interned_string()</code> , and not <code>malloc()</code> or <code>strdup()</code> or anything else :</p>
 <pre><code>#define IS_INTERNED(s) \
     (((s) &gt;= CG(interned_strings_start)) &amp;&amp; ((s) &lt; CG(interned_strings_end)))
@@ -172,8 +175,8 @@ static const char *zend_new_interned_string_int(const char *arKey, int nKeyLengt
     }
     /* ... ... */</code></pre>
 <p>As you can see, this API immediately returns the string you want to intern, if this latter is already in the interned string buffer.
-If not, it will lookup the interned string hashtable to find if the same string is stored into it. This is a heavy operation, as the hashtable needs to be browsed, and the string needs to be per-byte compared. Both operations will likely invalidate your L1 CPU cache, and possibly your L2 cache as well ; but we only create interned strings when this is necessary and will save performances later (heavilly used string). This is a tradeoff between the work needed to create the string (heavy) and the later work done to fetch back this string and use it.
-If the same string is found in the hashtable, this latter pointer is returned, and the original string buffer can also be freed by the API if we asked it to, passing '1' as last parameter.</p>
+If not, it will lookup the interned string hashtable to find if the same string is stored into it. This is a heavy operation, as the hashtable needs to be browsed, and the string needs to be per-byte compared. Both operations will likely invalidate your L1 CPU cache, and possibly your L2 cache as well ; but we only create interned strings when this is necessary and will save performances later (heavilly used string). This is a tradeoff between the work needed to create the string (heavy) and the later work done to fetch back this string and use it (light, and memory fair).
+If the same string is found in the hashtable, this latter pointer is returned and the original string buffer can also be freed by the API if we asked it to, passing '1' as last parameter.</p>
 <p>Let's continue :</p>
 <pre><code>if (CG(interned_strings_top) + ZEND_MM_ALIGNED_SIZE(sizeof(Bucket) + nKeyLength) &gt;=
     CG(interned_strings_end)) {
@@ -182,14 +185,14 @@ If the same string is found in the hashtable, this latter pointer is returned, a
 }</code></pre>
 <p>Like I said, if the memory buffer for storing the strings is full, the API returns the pointer you passed to it, effectively doing nothing.
 Let's end :</p>
-<pre><code>p = (Bucket *) CG(interned_strings_top);
-CG(interned_strings_top) += ZEND_MM_ALIGNED_SIZE(sizeof(Bucket) + nKeyLength);
+<pre><code>p = (Bucket *) CG(interned_strings_top); /* reserve room from our allocated buffer */
+CG(interned_strings_top) += ZEND_MM_ALIGNED_SIZE(sizeof(Bucket) + nKeyLength); /* move up the border */
 h = zend_inline_hash_func(arKey, nKeyLength);
 
 p-&gt;arKey = (char*)(p+1);
-memcpy((char*)p-&gt;arKey, arKey, nKeyLength);
+memcpy((char*)p-&gt;arKey, arKey, nKeyLength); /* copy the string into the interned string buffer */
 if (free_src) {
-    efree((void *)arKey);
+    efree((void *)arKey); /* free the original string */
 }
 p-&gt;nKeyLength = nKeyLength;
 p-&gt;h = h;
@@ -198,10 +201,13 @@ p-&gt;pDataPtr = p;
 
 /* ... ... */
 
-return p-&gt;arKey;</code></pre>
+return p-&gt;arKey; /* return the interned string */</code></pre>
 <p>And finally, the string is duplicated (<code>memcpy()</code>) from the pointer you provided (<em>arKey</em>), into the HashTable, which Bucket will be allocated from the interned string buffer itself.</p>
 <p>As you can see, there is nothing really complicated, just some clever tricks to make any future manipulation of the related string more efficient.
 For example, the string hash (<em>h</em> variable) is computed every time we intern a string. This hash will be needed any time the string is used as a key into a hashtable, and this is very likely to happen, so we prefer eating some more CPU cycles now (by computing the hash), than later at runtime when performances will be critical to the user.</p>
+<blockquote>
+<p>Interning a string is an operation which is done weither when PHP starts, or when it compiles a script, never at execution stage.</p>
+</blockquote>
 <p>Now we must think about string destruction. As you probably understood, interned strings are shared pointers, and thus should never be freed randomly by someone, because any place elsewhere the pointer is used, will lead to a use-after-free bug.</p>
 <p>Thus, when we are given a string and want to free it, we must first ask if this latter is interned.
 For this, we don't use <code>efree()</code> (the free() equivalent in PHP's source), but <code>str_efree()</code>, which takes care of interned strings.</p>
@@ -299,7 +305,7 @@ You can read more about this <a href="http://jpauli.github.io/2015/03/05/opcache
 </blockquote>
 <h2 id="the-php-7-way">The PHP 7 way<a href="#the-php-7-way" class="anchor">#</a></h2>
 <p>PHP 7 changed many things in the way PHP manipulates strings internally.</p>
-<h3 id="finally-a-real-shared-structure">Finally a real shared structure<a href="#finally-a-real-shared-structure" class="anchor">#</a></h3>
+<h3 id="finally-a-real-shared-structure-and-its-api">Finally a real shared structure and its API<a href="#finally-a-real-shared-structure-and-its-api" class="anchor">#</a></h3>
 <p>PHP 7 finally centralized the concept of "strings" into PHP, by designing a structure which is used everywhere PHP uses strings :</p>
 <pre><code>struct _zend_string {
     zend_refcounted_h gc;
@@ -372,7 +378,7 @@ static zend_always_inline void zend_string_release(zend_string *s)
 <p>If you want to grab the zend_string API, it is inlined (for compilation performance reasons) and stored in <a href="http://lxr.php.net/xref/PHP_TRUNK/Zend/zend_string.h">zend_string.h</a>.</p>
 <h3 id="interned-strings-still-matter">Interned strings still matter<a href="#interned-strings-still-matter" class="anchor">#</a></h3>
 <p>Like we saw, strings in PHP 7 are now reference counted, and that prevents us from needing to fully duplicate them when wanting to store a "copy" of a string from a layer to the other.</p>
-<p>But, interned strings still matter. They are still used in PHP 7, and that works nearly the same way as in PHP 5; except that we don't use a special buffer anymore, because we can flag a <em>zend_string</em> as being interned (the structure now allows us to do so).</p>
+<p>But, interned strings still matter. They are still used in PHP 7, and that works nearly the same way as in PHP 5; except that we don't use a special buffer anymore, because we can flag for gargage collector a <em>zend_string</em> as being interned (the structure now allows us to do so).</p>
 <p>So, creating an interned string in PHP 7, is creating a <em>zend_string</em> and flag it with <strong>IS_STR_INTERNED</strong>
 When releasing a <em>zend_string</em> using <code>zend_string_release()</code>, the API checks if the string is interned and just does nothing if it is the case.
 The interned strings are destroyed barely the same way as in PHP 5, simply the process in PHP 7 is optimized thanks to new allocation and garbage collection mechanisms.</p>
@@ -873,7 +879,7 @@ Then, the compiler was patched to generate runtime opcode when it meets an anony
 The same has been done when generators have been added to PHP5.5, but this time, it is way more complicated that just a Generator class and a new class handler. Perhaps the subject of a next article ?</p>]]></content>
     </entry>
         <entry>
-        <title>Segmentation Fault</title>
+        <title>Segmentation Fault (Computer memory layout)</title>
                 <id>http://jpauli.github.io//2015/04/16/segmentation-fault.html</id>
                 <updated>2015-04-16T00:00:00+00:00</updated>
         <author>
@@ -885,50 +891,56 @@ The same has been done when generators have been added to PHP5.5, but this time,
 <p>A quick word on what's this blog post is about.</p>
 <p>When I make mistakes in my code, it very often generates a "segmentation fault" message, often shorten as "segfault". And then, my collegues and managers come to me exclaming "ha!, we got a segfault for you (to fix)".
 "All right, that's mine" is often my answer. But, do you really know what a "segmentation fault" is ?.</p>
+<p>In addition to that, I could plan in the future to write technical in-depth PHP-memory-related articles, I need my readers to have such knowledge to understand some concepts further explained.</p>
 <p>To answer such a question, we'll have to rewind time back in 1960's. I'm going to explain you how a computer works, more accurately how memory is accessed into a modern computer and you'll then understand where this strange message comes from.</p>
-<p>What you'll read here is a summary of the basics of computer architecture design, I won't go too far if it's not necessary, and will use well known wordings so that anyone working with a computer everyday can understand such crucial concepts about how your machine works.</p>
+<p>What you'll read here is a summary of the basics of computer architecture design, I won't go too far if it's not necessary, and will use well known wordings so that anyone working with a computer everyday can understand such crucial concepts about how the machine works.</p>
+<p>Many books exist about computer architecture, if you want to go further into such a subject, I suggest you get some of them and start reading. Also, don't forget to grab one OS Kernel source code and study it, such as the Linux Kernel, or any else.</p>
+<blockquote>
+<p>We won't rewrite the history here. This post is detailed somehow, but not a full computer architecture class ; some info are missing or (sometimes extremely) simplified.</p>
+</blockquote>
 <h2 id="some-computer-science-history">Some computer science history<a href="#some-computer-science-history" class="anchor">#</a></h2>
 <p>Back in the time, computer were enormous machines, weighting tons, inside what you could find one CPU with something like 16Kb of memory (RAM). We won't go back in time further, that is before the CPU chips era.</p>
-<p>So in this period, a computer cost something like $150.000, and could execute exactly one task at a time : it could run one process at a given time.
+<p>So in this period, a computer cost something like $150,000 and could execute exactly one task at a time : it could run one process at a given time.
 If we would draw a schema of the memory architecure then, we would draw it like this :</p>
 <p><img alt="early_systems" src="../../../img/segfault/early_systems.png"></p>
 <p>As you can see, the memory is 16Kb wide, and into it you can find two things :</p>
-<ul><li>The Operating System memory area, which is 4Kb wide</li>
-<li>The actually running process memory area, which is then 12Kb wide</li>
-</ul><p>This blog post is not a course about Operating Systems designs, even if it looks like it. The operating system role was, at this time, to simply manage the hardware using CPU interruptions. So the OS needs memory for itself, to copy the data from a device f.e and treat them. Just to display something on the screen needs some main memory, back in this time where video chipsets bundled zero to few kilobytes of memory.</p>
+<ul><li>The Operating System memory area, which is 4Kb wide (f.e)</li>
+<li>The actually running process memory area, which is then 12Kb wide (f.e)</li>
+</ul><p>The operating system role was, at this time, to simply manage the hardware using CPU interruptions. So the OS needs memory for itself, to copy the data from a device f.e and treat them (PIO mode). Just to display something on the screen needs some main memory, back in this time where video chipsets bundled zero to few kilobytes of memory.</p>
 <p>And then, our solo program was running just next to the OS memory, achieving its tasks.</p>
 <p>We are fine with that, right ?</p>
 <h2 id="sharing-the-machine">Sharing the machine<a href="#sharing-the-machine" class="anchor">#</a></h2>
-<p>But one big problem of such a model is that the machine (costing $150.000) could only perform one task at a time, and this task was terribly long to run : entire days, to treat few Kb of data.</p>
+<p>But one big problem of such a model is that the machine (costing $150,000) could only perform one task at a time, and this task was terribly long to run : entire days, to treat few Kb of data.</p>
 <p>At this huge price, it was clearly not possible to buy several machines to perform several treatments at the same time, so people was trying to share the machine resources.
 The time of <em>multitasking</em> was born. Keep in mind that it is way too early to talk about multi-CPU machines. How can we make one machine, with one CPU, actually achieve several different tasks ?</p>
 <p>The answer was <em>scheduling</em> : when one process was busy waiting for an I/O to come through an interrupt, the CPU would then run another process during this time. We won't talk about scheduling at all (a too wide subject), but about memory.</p>
-<p>If a machine can run several process tasks one after the other, then that means that memory would then look like this :</p>
+<p>If a machine can run several process tasks one after the other, then that means that memory would then look something like this (f.e) :</p>
 <p><img alt="multitasking_memory" src="../../../img/segfault/multitasking_memory.png"></p>
-<p>Both task A and task B memory is stored into the RAM, because copying it back and forth to a disk is a way too heavy process : the data have to stay into RAM, permanently, as their respective tasks still run.</p>
-<p>Cool. But wait, there is a problem here.</p>
+<p>Both task A and task B memory are stored into the RAM, because copying it back and forth to a disk is a way too heavy process : the data have to stay into RAM, permanently, as their respective tasks still run.</p>
+<p>Cool : the scheduler gives some CPU time to A, then B, etc... each accessing its memory area. But wait, there is a problem here.</p>
 <p>When one programmer would write the task B's code, it then had to know the memory address bounds. Task B for example, would start from memory 10Kb to memory 12Kb, so every address in the program needs to be hardcoded exactly into those bounds, and if the machine could then run 3 tasks, then the address space would be divided in even more areas, and the memory bounds of task B would then move : B's programmer had to rewrite his program, to use less memory this time, and to rewrite every memory pointer address.</p>
 <p>Another problem is clear here : what if task B accessed memory in the task A area ? It is really easy to do so, because when you manipulate pointers, a little mistake in computation lead to a totally different address : task B can access task A's memory and corrupt it (overwrite it). Security as well : what if task A is a very sensitive program playing with very sensitive data ? There is no way to prevent task B from reading task A's memory area.
 And last : what if task B does a mistake, and overwrite the OS memory ? From 0Kb to 4Kb, here, it is OS memory, if task B overwrites it, then the OS will crash for sure.</p>
 <h2 id="address-space">Address Space<a href="#address-space" class="anchor">#</a></h2>
-<p>So, to be able to run several tasks residing in memory, the OS must help. One way of helping, is by creating what's called an address space.
-An address space is an abstraction of the memory that the OS will give to a process, and this concept is absolutely fundamental, as nowadays, every piece of computer you meet in your life, is designed like that. There exists no other model (in the civilian society, army may retain secrets). You use your personnal computer, you keep typing on your mobile phone's screen, you start your TV, you play with your video game console, and you put your credit card in a cash machine and you ridiculously talk to your glasses or your watch. <strong>Every, every system nowadays, just works like this internally</strong>.</p>
+<p>So, to be able to run several tasks residing in memory, the OS and the hardware must help. One way of helping, is by creating what's called an address space.
+An address space is an abstraction of the memory that the OS will give to a process, and this concept is absolutely fundamental, as nowadays, every piece of computer you meet in your life, is designed like that. There exists no other model (in the civilian society, army may retain secrets). You use your personnal computer, you keep typing on your mobile phone's screen, you start your TV, you play with your video game console, and you put your credit card in a cash machine and you ridiculously talk to your glasses or your watch.</p>
+<blockquote>
+<p>Every system nowadays is organized with a code-stack-heap memory layout like this, in its deepnesses.</p>
+</blockquote>
 <p>The address space contains everything a task (a process) will need to run :</p>
 <ul><li>Its code : its machine instructions the CPU will have to run</li>
 <li>Its data : the data the machine instructions will play with</li>
-<li>Other things we won't detail here</li>
-</ul><p>The address space is divided like this, in every computer system running on the Earth today (99% of them, right !) :</p>
+</ul><p>The address space is divided like this :</p>
 <p><img alt="process_address_space" src="../../../img/segfault/process_address_space.png"></p>
-<ul><li>The stack is the memory area where the program keeps informations about called functions, their arguments and every local variable into the functions.</li>
-<li>The heap is the memory area where the program does whatever it wants to, the programmer is absolutely free to do anything he wants in such area.</li>
-<li>The code is the memory area where the CPU instructions of the compiled program will be stored. Those instructions are generated by a compiler, but can be hand written.</li>
+<ul><li>The <em>stack</em> is the memory area where the program keeps informations about called functions, their arguments and every local variable into the functions.</li>
+<li>The <em>heap</em> is the memory area where the program does whatever it wants to, the programmer is absolutely free to do anything he wants in such area.</li>
 <li>
-<p>This is a little bit more complex than that in reality, as I said earlier, my goal is not to rewrite the global theory of computer architecture ;-)</p>
+<p>The <em>code</em> is the memory area where the CPU instructions of the compiled program will be stored. Those instructions are generated by a compiler, but can be hand written. Note that the code segment is usually divided itself in three parts (Text, Data and BSS), but we don't need to go that far in our analyze.</p>
 </li>
-<li>The code is fixed size : it is born from a compiler, will weigh (in our example picture) 1Kb, and that's it.</li>
-<li>The stack however is a resizable zone, as the program runs. When functions get called, the stack expands, when function calls are terminated : the stack shrinks back.</li>
-<li>The heap as well is a resizable zone, as the programmer asks memory from the heap (mmaloc()), this latter will expand, and when the programmer frees back memory (free()), the heap narrows.</li>
-</ul><p>As the stack and the heap are expandable zones, they've been located at opposite locations into the whole address space : the stack will grow upwards, and the heap downwards, they are fully free to grow, each one in the direction of the other. What the OS will have to check is simply that the zones don't overlap at some time, using limits mainly.</p>
+<li>The <em>code</em> is fixed size : it is born from a compiler, will weight (in our example picture) 1Kb, and that's it.</li>
+<li>The <em>stack</em> however is a resizable zone, as the program runs. When functions get called, the stack expands, when function calls are terminated : the stack expands backwards.</li>
+<li>The <em>heap</em> as well is a resizable zone, as the programmer asks memory from the heap (<code>malloc()</code>), this latter will expand forwards, and when the programmer frees back memory (<code>free()</code>), the heap narrows.</li>
+</ul><p>As the stack and the heap are expandable zones, they've been located at opposite locations into the whole address space : the stack will grow backwards, and the heap forwards. They are both fully free to grow, each one in the direction of the other. What the OS will have to check is simply that the zones don't overlap at some time, using limits mainly.</p>
 <h2 id="memory-virtualization">Memory virtualization<a href="#memory-virtualization" class="anchor">#</a></h2>
 <p>If task A has got an address space like the one we saw, and so task B... How can we fit both of them into memory ? That seems weird. Task A address space starts from 0kb to 16Kb and so for task B. Huh...</p>
 <p>The trick relies in <strong>virtualization</strong>.</p>
@@ -939,8 +951,9 @@ An address space is an abstraction of the memory that the OS will give to a proc
 In task A memory, memory index for example 11K, is just a fake address. This is a virtual memory address.</p>
 <p><strong>Every program running on the machine plays with fake, virtual address</strong>. With the help of some hardware chips, the OS will trick the process when this latter will try to access any zone of memory.</p>
 <p>The OS will virtualize memory, and will guarantee every task that it can't access memory is doesn't own : the virtualization of memory has allowed process isolations : task A can't access task B's memory anymore, nether can it access the OS own memory. And everything is totally transparent to the user-level tasks, thanks to tons of complex OS Kernel code.</p>
-<p>Thus, the OS will have to come on scene for every process memory demand. It will then have to be very efficient, not to slow down too much the different programs running, and to achieve this, it will get helped by the hardware : mainly by the CPU and some electronical device around it, like the MMU (Memory Management Unit).
-MMU appeared then in early 70's, with IBM, as separated chips. They are now embed directly into our CPU chips, and are mandatory for any modern OS to run.</p>
+<p>Thus, the OS will have to come on scene for every process memory demand. It will then have to be very efficient - not to slow down too much the different programs running - and to achieve this it will get helped by the hardware : mainly by the CPU and some electronical device around it, like the MMU (Memory Management Unit).
+MMU appeared then in early 70's, with IBM, as separated chips. They are now embed directly into our CPU chips, and are mandatory for any modern OS to run.
+In fact, the OS won't have tons of things to do, it will heavilly rely on some hardware specific behaviors that will ease a lot every memory access.</p>
 <p>Here is a little C program showing some memory addresses :</p>
 <pre><code>#include &lt;stdio.h&gt;
 #include &lt;stdlib.h&gt;
@@ -972,32 +985,33 @@ The OS will then save those two values into each process table, called the PCB (
 <p>And here is its physical image :</p>
 <p><img alt="memory_virt" src="../../../img/segfault/memory_virt.png"></p>
 <p>The OS chose to store it into physical memory at address range 4K to 20K, thus the base address is set to 4K and the bound/limit is set to 4+16 = 20K.
-When this process will try to load, for example, its virtual address 2K (something into its heap), the OS will fire-in and add to this address the base for this process. Thus, this process memory access will lead to the physical location 2K + 4K = 6K.</p>
+When this process is scheduled (given some CPU time), the OS reads back both the <em>bound</em> and <em>limit</em> values from the PCB, and copies them into specific CPU registers.
+Then the process will run and will try to load for example its virtual address 2K (something into its heap). The CPU will then add to this address the base it has received from the OS. Thus, this process memory access will lead to the physical location 2K + 4K = 6K.</p>
 <p><strong>physical address = virtual address + base</strong></p>
-<p>If the resulting physical address (6K) is out of the bounds ( -4K|20K- ), that means that the process tried to access invalid memory that it doesnt own : the OS will then generate a signal to that task : a SIGSEGV : a Segmentation Fault, which by default (this can be changed), will terminate the task : it has crashed about invalid memory access.</p>
+<p>If the resulting physical address (6K) is out of the bounds ( -4K|20K- ), that means that the process tried to access invalid memory that it doesnt own : the CPU will then generate an exception, and as the OS did set up an exception handler for that, the OS will be triggered back by the CPU and knows a memory exception has just happened onto the CPU. Its default behavior is then to issue a signal to the faulty processk : a SIGSEGV : a Segmentation Fault, which by default (this can be changed) will terminate the task : the process has crashed about invalid memory access.</p>
 <h3 id="memory-relocation">Memory Relocation<a href="#memory-relocation" class="anchor">#</a></h3>
 <p>Even better, if task A is unscheduled, that means it is taken out from the CPU because the scheduler asked to run another task now (say task B), when running task B, the OS is free to relocate the entire physical address space of task A.
 The OS is given the CPU often when a user task runs. When this latter issues a system call, the control of the CPU is given back to the OS, and before honnoring the system call, the OS is free to do whatever it wants about memory management, like relocating an entire process space into a different physical memory slot.</p>
-<p>For this, it is relatively simple : the OS moves the 16K wide area into another 16K wide free space, and simply updates the bound variable of the task A. When this latter will be resumed and given back the CPU, the address translation process still works, but it doesn't lead to the same physical address as before.</p>
-<p>Task A has noticed nothing, for task A, its address space still starts from 0K, up to 16K. The OS totally takes control over every memory access for task A, and has thrown a complete illusion to it. The programmer behind task A manipulates its allowed virtual addresses, from 0 to 16, and the OS behind will take care of positionning everything into physical memory.</p>
+<p>For this, it is relatively simple : the OS moves the 16K wide area into another 16K wide free space, and simply updates the base and bound variables of the task A. When this latter will be resumed and given back the CPU, the address translation process still works, but it doesn't lead to the same physical address as before.</p>
+<p>Task A has noticed nothing, from its point of view, its own address space still starts from 0K up to 16K. The OS and the hardware MMU take full control over every memory access for task A, and they have thrown a complete illusion to it. The programmer behind task A manipulates its allowed virtual addresses, from 0 to 16, and the MMU behind will take care of positionning everything into physical memory.</p>
 <p>The memory image, after the move, would then look like this :</p>
 <p><img alt="process_relocation" src="../../../img/segfault/process_relocation.png"></p>
-<p>It has become very easy to program memory now : a programmer no longer has to wonder where its program will be located in RAM, if another task will run next to his own, and what memory addresses to manipulate : it is taken by hand by the OS.</p>
+<p>It has become very easy to program memory now : a programmer no longer has to wonder where its program will be located in RAM, if another task will run next to his own, and what memory addresses to manipulate : it is taken by hand by the OS, helped with very performant and clever hardware : the Memory Management Unit (MMU).</p>
 <h2 id="memory-segmentation">Memory segmentation<a href="#memory-segmentation" class="anchor">#</a></h2>
 <p>Notice the appearance of the "segmentation" word : we are close to the explaination of "why 'segmentation fault'".</p>
 <p>In the last chapter, we explained about memory translation and rellocation, but the model we used has drawbacks :</p>
-<ul><li>We assumed every virtual address space is fixed 16Kb wide. This is obviously not the case in reality</li>
-<li>The OS has to maintain a list of physical memory free slots (16Kb wide), to be able to find a place for any new process asking to start, or for relocating a started process, how to do this efficiently to not slow down all the system ?</li>
+<ul><li>We assumed every virtual address space is fixed 16Kb wide. This is obviously not the case in reality.</li>
+<li>The OS has to maintain a list of physical memory free slots (16Kb wide), to be able to find a place for any new process asking to start, or to relocating a started process. How to do this efficiently to not slow down all the system ?</li>
 <li>As you can see, every process memory image is 16Kb wide, even if the process doesn't use its whole address space, which is very likely. This model clearly wastes a lot of memory, as if a process really consumes say 1KB of memory, its memory image in physical RAM holds 16Kb. Such a waste is called <em>internal fragmentation</em> : the memory is reserved, but never used.</li>
 </ul><p>To address some of those problems, we're gonna dive into more complex memory organization from the OS : segmentation.</p>
-<p>Segmentation is easy to understand : we widen the concept of "base and bounds" to the three logicial segments of memory : the heap, the code and the stack, of each process.</p>
+<p>Segmentation is easy to understand : we widen the concept of "base and bounds" to the three logicial segments of memory : the heap, the code and the stack, of each process - instead of just cosiderating the memory image as one unique entity.</p>
 <p>With such a concept, the wasted memory between the stack and the heap, is no longer wasted. Like this :</p>
 <p><img alt="basic_segments" src="../../../img/segfault/basic_segments.png"></p>
 <p>Now it is easy to notice that the free space in virtual memory for task A is no longer allocated into physical memory, the memory usage has become much more efficient.</p>
-<p>The only difference now, is that for any task, the OS doesn't have to remember one couple base/bounds, but threee of them : one couple for each segment type. The MMU takes care of the translations, just like before.</p>
+<p>The only difference now is that for any task, the OS doesn't have to remember one couple base/bounds, but three of them : one couple for each segment type. The MMU takes care of the translations, just like before, and now supports as well 3 <em>base</em> values and 3 <em>bounds</em>.</p>
 <p>For example, here, the task A's heap has a base of 126K and a bound of 2K. When the task A asks to access its virtual address 3Kb, into its heap; the physical address is 3Kb - 2Kb (start of the heap) = 1Kb + 126K (offset) = 127K. 127K is before 128K : this is a valid memory address that can be honored.</p>
 <h3 id="segment-sharing">Segment sharing<a href="#segment-sharing" class="anchor">#</a></h3>
-<p>Segmenting the physical memory not only solves the problem of free virtual memory not eating any more physical memory, but it also allows to share physical segments through different processes virtual address space.</p>
+<p>Segmenting the physical memory not only solves the problem of free virtual memory not eating any more physical memory, but it also allows to share physical segments through different processe virtual address spaces.</p>
 <p>If you run twice the same task, task A for example, the code segment is exactly the same : both tasks run the same CPU instructions. While both tasks will use their own stack and heap, as they treat their own set of data, it is silly to duplicate the code segment of both in memory. The OS can now share it, and save even more memory. Something like this :</p>
 <p><img alt="shared_seg" src="../../../img/segfault/shared_seg.png"></p>
 <p>On the picture above, both A and B have their own code area into their respective virtual memory space, but under the hood, the OS shared this area into the same physical memory segments.
@@ -1005,7 +1019,7 @@ Both A and B are once more fooled : they absolutely don't see this, for both of 
 <p>To achieve this, the OS has to implement one more feature : segment protection bits.</p>
 <p>The OS will, for each physical segment it creates, register the bound/limit for the MMU translation unit to work correctly, but it will also register a permission flag.</p>
 <p>As the code is not modifiable, the code segments are all created with the RX permission flag. The process can load those memory areas for eXecution, but any process trying to Write into such memory area, will be shout at by the OS.
-The other two segments : heap and stack are RW, the processes can read and write from their own stack/heap , but they can't execute code from it (this prevents program security flaws, where a bad user may want to corrupt the heap or the stack to inject code to run, mainly to be given root access : this is not possible as the heap and stack segments often are not eXecutable. Note that this has not always been the case in history).</p>
+The other two segments : heap and stack are RW, the processes can read and write from their own stack/heap , but they can't execute code from it (this prevents program security flaws, where a bad user may want to corrupt the heap or the stack to inject code to run, mainly to be given root access : this is not possible as the heap and stack segments often are not eXecutable. Note that this has not always been the case in history and requires some more hardware support to work efficiently, this is called the "NX bit" under Intel CPU).</p>
 <p>Memory segments permissions are changeable at runtime : the task may call for <a href="http://man7.org/linux/man-pages/man2/mprotect.2.html">mprotect()</a> from the OS.</p>
 <p>Those memory segments are clearly visible under Linux, use <em>/proc/{pid}/maps</em> or the <em>/usr/bin/pmap</em> utility</p>
 <p>Here is an example for PHP :</p>
@@ -1021,7 +1035,7 @@ The other two segments : heap and stack are RW, the processes can read and write
 <p>Here, we have a detail of all the memory mappings. Addresses are virtual, and every memory area permissions are displayed.
 Like we can see, every shared object (.so) is mapped into the address space as several mappings (likely code and data), and the code areas are eXecutable, and behind the hood, they are shared into physical memory between every process having mapped such a shared object into its own address space.</p>
 <p>This is one enormous advantage of Shared Objects under Linux (and Unixes) : memory savings.</p>
-<p>It is possible also, to create a shared area, leading to a shared physical memory segment, by using the <a href="http://man7.org/linux/man-pages/man2/mmap.2.html">mmap()</a> system call. A 's' letter will then appear next to the area, standing for "shared" .>
+<p>It is possible also to create a shared area leading to a shared physical memory segment, by using the <a href="http://man7.org/linux/man-pages/man2/mmap.2.html">mmap()</a> system call. A 's' letter will then appear next to the area, standing for "shared" .>
 <h3 id="segmentation-limits">Segmentation limits<a href="#segmentation-limits" class="anchor">#</a></h3>
 <p>We've seen that segmentation fixed the problem of unused virtual memory space. When a process doesn't use some memory space, this latter is not mapped into physical memory, thanks to segments, that correspond to used memory.</p>
 <p>However, that is not entirely true.</p>
@@ -1032,7 +1046,7 @@ Like we can see, every shared object (.so) is mapped into the address space as s
 <p>The OS can try to compact the memory, by merging all the free areas into one big chunk that could be used in the future to satisfy a memory demand.</p>
 <p><img alt="compacted_memory" src="../../../img/segfault/compacted_memory.png"></p>
 <p>But such compaction algorithm is really heavy for CPU, and in the meantime, no user process may be given the CPU : the OS is fully working reorganizing its physical memory, thus the system becomes unusable.</p>
-<p>Segments show real weaknesses, thus there is a need to enhance their capabilities and fix those flaws : this is done by another even more concept : memory paging; and we'll stop here for our article ;-)</p>
+<p>Memory segmentation addresses lots of problems about memory management and multitasking, but they also show real weaknesses. Thus, there is a need to enhance the segmentation capabilities and fix those flaws : this is done by another concept : <em>memory paging</em>; but we'll stop here for our article.</p>
 <h2 id="conclusion">Conclusion<a href="#conclusion" class="anchor">#</a></h2>
 <p>You now know what resides under the "segmentation fault" message. OSes use segments to map virtual memory space to physical memory space.
 When a user land process wants to access some memory, it issues a demand that the MMU will translate to a physical memory address. But if this address is wrong : out of the bounds of the physical segment, or if the segment rights are not good (asking to write to a read-only segment), then the OS by default sends a signal to the faulting process : a SIGSEGV , which has a default handler that kills the process and outputs a message : "Segmentation fault". Under other OSes (guess), it is often reported as a "General protection fault". For Linux, we are lucky to be able to access the source code, here is the place of the source code, for X86/64 platforms, that manages memory access errors : <a href="http://lxr.free-electrons.com/source/arch/x86/mm/fault.c"><a href="http://lxr.free-electrons.com/source/arch/x86/mm/fault.c">http://lxr.free-electrons.com/source/arch/x86/mm/fault.c</a></a> , and for SIGSEGV, its precisely <a href="http://lxr.free-electrons.com/source/arch/x86/mm/fault.c#L731">here</a></p>
@@ -1040,7 +1054,7 @@ When a user land process wants to access some memory, it issues a demand that th
 <p>I liked writing this article, it drove me back in late nineties, when I was programming my first CPUs : <a href="http://www.freescale.com/files/microcontrollers/doc/data_sheet/M68HC11E.pdf">Motorola 68HC11</a> Using C, VHDL and direct Assembly, then I turned to Web ; but my first knowledge come from electronics, and I'm pretty sure I will go back to CPU programming and embed systems later in my career, I find this so exciting...</p></a></p>]]></content>
     </entry>
         <entry>
-        <title>Exceptional PHP</title>
+        <title>Exceptional PHP (PHP 5)</title>
                 <id>http://jpauli.github.io//2015/04/09/exceptional-php.html</id>
                 <updated>2015-04-09T00:00:00+00:00</updated>
         <author>
@@ -1049,7 +1063,7 @@ When a user land process wants to access some memory, it issues a demand that th
         </author>
         <link rel="alternate" type="text/html" href="http://jpauli.github.io//2015/04/09/exceptional-php.html"/>
         <content type="html" xml:lang="en"><![CDATA[<h2 id="php-exceptions-in-short">PHP Exceptions in short<a href="#php-exceptions-in-short" class="anchor">#</a></h2>
-<p>Back in 2004, PHP5 came out with a new model object. This latter allows PHP users to make use of a well known OO paradigm : Exceptions.
+<p>Back in 2004, PHP 5 came out with a new model object. This latter allows PHP users to make use of a well known OO paradigm : Exceptions.
 The Exceptions model has then not been really reworked. PHP 5.3 introduced stacked Exceptions, which is a very nice improvement in stack traces analysis, and PHP 5.5 added the "<em>finally</em>" feature.
 As you know how Exceptions work with PHP, because you are a heavy user of the PHP language, let me show you how this big feature works in the PHP source code, into the Zend Engine : how it's been implemented.</p>
 <h2 id="exception-this-so-particular-class">Exception : this so particular class<a href="#exception-this-so-particular-class" class="anchor">#</a></h2>
@@ -1116,8 +1130,8 @@ Class [ &lt;internal:Core&gt; class Exception ] {
 <p>As you can see, lots of methods are final : you may not change the default behavior, dictated by the engine source code.
 You cannot clone Exceptions, and if you extend the class, some attributes are private : you can't change them.</p>
 <p>This is because the engine expects some well defined behavior when it comes to play with an Exception object, or one of its children.</p>
-<p>You also know that Exception is the base class of every other exceptions, SPL ones, foobar ones, or yours.
-This is checked when one wants to throw something, for PHP extensions one must call <code>zend_throw_exception_object()</code>, and for PHP userland code the compiler will anyway lead to this same function :</p>
+<p>You also know that Exception is the base class of every other exceptions, SPL ones, foobar ones, or yours. This has changed in PHP 7 where every Exception must implement a new Throwable interface, and where the engine itself can now convert fatal errors into exceptions.
+Exceptions are checked when one wants to throw something, for PHP extensions one must call <code>zend_throw_exception_object()</code>, and for PHP userland code the compiler will anyway lead to this same function (when meeting the <code>throw</code> keyword especially):</p>
 <pre><code>ZEND_API void zend_throw_exception_object(zval *exception TSRMLS_DC)
 {
     zend_class_entry *exception_ce;
@@ -1292,15 +1306,16 @@ The procedure is fast, because the compiler already filled-in the index of the <
 <p>Continuing the source code of <code>ZEND_HANDLE_EXCEPTION</code> :</p>
 <pre><code>/* ... */
 
+/* Treat finally, as it is alone (no fetchable catch block) */
 if (finally_op_num &amp;&amp; (!catch_op_num || catch_op_num &gt;= finally_op_num)) {
     zend_exception_save(TSRMLS_C);
     EX(fast_ret) = NULL;
     ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[finally_op_num]);
     ZEND_VM_CONTINUE();
-} else if (catch_op_num) {
+} else if (catch_op_num) { /* Treat the catch block, as it is here and fetchable */
     ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[catch_op_num]);
     ZEND_VM_CONTINUE();
-} else {
+} else { /* leave, as there is no catch block nor finally block to fetch and treat */
     if (UNEXPECTED((EX(op_array)-&gt;fn_flags &amp; ZEND_ACC_GENERATOR) != 0)) {
         ZEND_VM_DISPATCH_TO_HANDLER(ZEND_GENERATOR_RETURN);
     } else {
@@ -1323,10 +1338,10 @@ ZEND_VM_CONTINUE();</code></pre>
 
     ce = Z_OBJCE_P(EG(exception));
 
-    if (ce != catch_ce) {
-        if (!instanceof_function(ce, catch_ce TSRMLS_CC)) {
+    if (ce != catch_ce) { /* This is not our exception ? */
+        if (!instanceof_function(ce, catch_ce TSRMLS_CC)) { /* This is not one of its ancestor ? */
             if (opline-&gt;result.num) {
-                zend_throw_exception_internal(NULL TSRMLS_CC);
+                zend_throw_exception_internal(NULL TSRMLS_CC); /* rethrow the exception */
                 HANDLE_EXCEPTION();
             }
             ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;extended_value]);
@@ -1338,7 +1353,7 @@ ZEND_VM_CONTINUE();</code></pre>
     if (UNEXPECTED(EG(exception) != exception)) {
         Z_ADDREF_P(EG(exception));
         HANDLE_EXCEPTION();
-    } else {
+    } else { /* This is our exception, let's treat that catch block */
         EG(exception) = NULL;
         ZEND_VM_NEXT_OPCODE();
     }
@@ -1348,9 +1363,9 @@ ZEND_VM_CONTINUE();</code></pre>
 <p>If it is not our Exception, then we must not run this current catch block : it is not ours. We then "rethrow" the Exception internally : <code>zend_throw_exception_internal()</code>. That will make the VM Executor re-run the <code>ZEND_HANDLE_EXCEPTION</code> OPCode, but this time, starting from our catch block : it will then re-do its operation, considerating the (eventually) next catch block , etc.. etc... until it finds the right catch block (if any) to run code from.</p>
 <p>Important thing : if it is our catch block and we run its code, we reset the exception slot : <code>EG(exception) = NULL;</code></p>
 <h3 id="finally">finally<a href="#finally" class="anchor">#</a></h3>
-<p><em>Finally</em> is a little bit harder to understand and has not been trivial to add to PHP 5.5.</p>
-<p>The trick is that after having run the <em>finally</em> block, we must weither continue execution if a catch treated the exception, or stop the execution if the Exception was actually uncaught.</p>
-<p>To achieve this, we introduced two new OPCodes in PHP5.5, just for the <em>finally</em> feature : <code>ZEND_FAST_CALL</code> and <code>ZEND_FAST_RETURN</code>, and we also play with <code>ZEND_JMP</code>.</p>
+<p><em>Finally</em> is harder to understand and has not been trivial to add to PHP 5.5, it is full of hacks.</p>
+<p>The problem is that after having run the <em>finally</em> block, we must weither continue execution if a catch treated the exception, or stop the execution if the Exception was actually uncaught.</p>
+<p>To achieve this, we introduced two new OPCodes in PHP 5.5, just for the <em>finally</em> feature : <code>ZEND_FAST_CALL</code> and <code>ZEND_FAST_RETURN</code>, and we also play with <code>ZEND_JMP</code>.</p>
 <p>So here is the code the Zend Compiler generates for finally block :</p>
 <pre><code>void zend_do_finally(znode *finally_token TSRMLS_DC)
 {
@@ -1548,7 +1563,7 @@ That's how Exceptions have been designed; with a little bit more tricky <em>fina
 We can then say that Exceptions are not a slow feature into PHP, but a well optimized one. You may use them whenever you want, take care however of some little bit strange but uncommon behaviors about them.</p>]]></content>
     </entry>
         <entry>
-        <title>Zoom on PHP objects and classes</title>
+        <title>Zoom on PHP objects and classes (PHP 5)</title>
                 <id>http://jpauli.github.io//2015/03/24/zoom-on-php-objects.html</id>
                 <updated>2015-03-24T00:00:00+00:00</updated>
         <author>
@@ -1557,21 +1572,21 @@ We can then say that Exceptions are not a slow feature into PHP, but a well opti
         </author>
         <link rel="alternate" type="text/html" href="http://jpauli.github.io//2015/03/24/zoom-on-php-objects.html"/>
         <content type="html" xml:lang="en"><![CDATA[<h2 id="php-objects-introduction">PHP objects introduction<a href="#php-objects-introduction" class="anchor">#</a></h2>
-<p>Everybody uses objects nowadays. Something that was not that easy to bet on when PHP5 got released 10 years ago (2005).
+<p>Everybody uses objects nowadays. Something that was not that easy to bet on when PHP 5 got released 10 years ago (2005).
 I still remember this day, I wasn't involved in internals code yet, so I didn't know much things about how all this big machine
 could work. But I had to note at this time, when using this new release of the language, that jumps had been made compared to old
-PHP4.
-The major point advanced for PHP5 adoption was : "it has a new very powerful object model". That wasn't lies.
-Today, 10 years later, something like 90% of the PHP source code involving objects haven't changed since PHP5.0.
+PHP 4.
+The major point advanced for PHP 5 adoption was : "it has a new very powerful object model". That wasn't lies.
+Today, 10 years later, something like 90% of the PHP source code involving objects haven't changed since PHP 5.0.
 That shows how resulted this object model was when released. Sure it got improved through time, with new features especially.</p>
 <p>Here, I will show you as usual how all this stuff works internally. The goal is always the same : you understand and master
 what happens in the low level, to make a better usage of the language everyday.
 Also, I will show you how memory usage has been really worked hard about objects, and how objects are nice about memory, compared
 to equivalent arrays (when possible).</p>
-<p>We will focus on PHP5, starting with PHP 5.4, for this article. The statements will be true for 5.5 and 5.6, which have changed
+<p>We will focus on PHP 5, starting with PHP 5.4, for this article. The statements will be true for 5.5 and 5.6, which have changed
 nearly nothing in object model internals. This is not the case of PHP 5.3, which has a less resulted object model, nice improvements (both in term of user features, and general performances) were added back in PHP 5.4.</p>
-<p>About PHP7, which is still under heavy development nowadays, the object model has not been reworked deeply, only tidy up things on
-surface. Why ? Because we don't need to : it works. Userland features were added, but here we don't care about those : only the
+<p>About PHP 7, the object model has not been reworked deeply, only tidy up things on
+surface. Why ? Because we don't need to : it works. Of course, userland features were added but here we don't care about those : only the
 internal design (the truth) scores :-)</p>
 <h2 id="starter-example">Starter example<a href="#starter-example" class="anchor">#</a></h2>
 <p>Ok so let's start with some synthetic benchmarks to demonstrate things :</p>
@@ -1588,7 +1603,7 @@ for ($i=0; $i&lt;1000; $i++) {
 }</code></pre>
 <p>This code declares a simple 3 attributes class, and then in a loop, it creates 1000 objects of this class, showing the memory usage diff
 between allocations.</p>
-<p>That are 262 bytes diff at every object creation. Creating an object of class Foo, plus creating a PHP variable to store the object into it, allocate 262 bytes in PHP heap memory.</p>
+<p>That are 262 bytes diff at every object creation (LP64). Creating an object of class Foo, plus creating a PHP variable to store the object into it, allocate 262 bytes in PHP's heap memory (LP64).</p>
 <p>Let's try now to turn this object into an equivalent array, some kind of :</p>
 <pre><code>for ($i=0; $i&lt;1000; $i++) {
     $m = memory_get_usage();
@@ -1596,7 +1611,7 @@ between allocations.</p>
     echo memory_get_usage() - $m . "\n";
 }</code></pre>
 <p>The array embeds the same values : an array, a null and a foobar string.
-The difference between arrays creation is 1160 bytes : that is something like 4 to 5 times more memory eaten.</p>
+The difference between arrays creation is 1160 bytes (LP64) : that is something like 4 to 5 times more memory eaten.</p>
 <p>Let's do another quick bench :</p>
 <pre><code>$class = &lt;&lt;&lt;'CL'
 class Foo {
@@ -1608,8 +1623,8 @@ CL;
 echo memory_get_usage() . "\n";
 eval($class);
 echo memory_get_usage() . "\n";</code></pre>
-<p>As class declaration is honorred at compile time, we use an <code>eval()</code> statement to declare it at runtime and measure, with the PHP memory manager, its memory usage, just for it, we haven't created any object of it in this code.</p>
-<p>The diff memory is 2216 bytes, aka about 2Kb.</p>
+<p>As class declaration is honorred at compile time, we use an <code>eval()</code> statement to declare it at runtime and measure - with the PHP memory manager - its memory usage - just for it - we haven't created any object of it in this code (yet).</p>
+<p>The diff memory is 2216 bytes, aka about 2Kb (assuming LP64).</p>
 <p>Now, we are going to dive into PHP's sources to show you what happens, and to confirm our practice by some theory. </p>
 <h2 id="it-all-begins-with-a-class">It all begins with a class...<a href="#it-all-begins-with-a-class" class="anchor">#</a></h2>
 <p>A class is represented internally by the <em>zend_class_entry</em> structure. Here it is :</p>
@@ -1679,39 +1694,34 @@ echo memory_get_usage() . "\n";</code></pre>
 };</code></pre>
 <p>Huge isn't it ? Its size, assuming an LP64 platform, is <strong>568 bytes</strong>.</p>
 <blockquote>
-<blockquote>
 <p>Everytime PHP needs to declare a class, it must allocate a <em>zend_class_entry</em>, and that will raise its memory heap usage of barely half a kilobyte, just for the class structure, not talking about everything behind it.</p>
 </blockquote>
-</blockquote>
-<p>And of course that is not finished, because like you can see, this zend_class_entry structure is full of pointers, that need to be allocated.</p>
-<blockquote>
+<p>And of course that is not finished, because like you can see, this <em>zend_class_entry</em> structure is full of pointers, that need to be allocated.</p>
 <blockquote>
 <p>The first thing one may remember is that a PHP class (not a PHP object), is a "heavy" thing to store in memory.
 In fact, classes are much more heavy in memory that related future objects to create from it.</p>
 </blockquote>
-</blockquote>
-<p>Also, a class is not alone : it declares attributes (static or not, whatever), and methods.
+<p>Also, a class is not alone : it declares attributes (static or not, whatever), methods and constants.
 Those will consume memory as well. For methods, the computation is not really easy to make, but obviously, the bigger the method body, the more memory this method will eat, because the bigger its OPArray will be. Also, static variables declared into a method (if any) will eat memory.</p>
+<blockquote>
+<p>Internally a method is strictly the same as a function, there is no difference in term of performance or memory usage in both.</p>
+</blockquote>
 <p>Then come the attributes. Those later will also allocate memory, depending on their default values : an integer will be light, but a big static array will eat more memory.</p>
 <p>There is a last thing to take care of, which is detailed into the <em>zend_class_entry</em> source code as well : PHP comments.
-PHP comments, also known as annotations, are strings, in C : char* buffers, and they need to be allocated and are really easy to compute, as in C, not using Unicode like PHP does : <strong>one character = one byte</strong>.</p>
+PHP comments, also known as annotations, are strings, in C : <em>char *</em> buffers, and they need to be allocated and are really easy to compute, as in C not using Unicode like PHP does : <strong>one character = one byte</strong>. For more information about how PHP manages strings internally, please read the <a href="http://jpauli.github.io/2015/09/18/php-string-management.html">dedicated article</a>.</p>
 <blockquote>
-<blockquote>
-<p>The more annotations you have in your class, the more memory will be eaten when the class will be parsed.</p>
+<p>The more annotations you have in your class, the more memory will be eaten when the class is created (parsed). Same thing for methods or attributes.</p>
 </blockquote>
-</blockquote>
-<p>The <em>doc_comment</em> field is used, for <em>zend_class_entry</em>, it retains the class annotations. For methods : their structure also has a <em>doc_comment</em> field, and same for attributes.</p>
+<p>The <em>doc_comment</em> field is used and retains the class annotations. For methods : their structure also has a <em>doc_comment</em> field, and same for attributes.</p>
 <h3 id="user-classes-vs-internal-classes">User classes VS internal classes<a href="#user-classes-vs-internal-classes" class="anchor">#</a></h3>
 <p>Everybody spotted it : a user class is a class defined using PHP, an internal class in a class defined hacking PHP's source, or provided by any extension.</p>
 <blockquote>
-<blockquote>
 <p>The biggest difference to know, is that user classes allocate request-bound memory whereas internal classes allocate "permanent" memory</p>
-</blockquote>
 </blockquote>
 <p>That means that when PHP finishes to treat the actual web HTTP request, it will deallocate and destroy every user classes it knows, to leave the room blank for the next request. This is known as <em>the share nothing architecture</em>, this is how PHP has been designed since the begining, and there is no plan to change it.</p>
 <p>So everytime you start a request and make PHP parse classes : it allocates memory for your class. Then you use your class, and then PHP destroys everything about it.
 So you really should be sure to use every class you declared, if not : you are wasting memory.
-Use an autoloader, because autoloaders delay class parsing/declaration at runtime, when PHP really needs, the class.
+Use an autoloader, because autoloaders delay class parsing/declaration at runtime, when PHP really needs the dedicated class.
 An autoloader will slow down runtime, but will be smart about your process memory usage, as it will not be triggered if the class is not actually really used.</p>
 <p>This is not the case at all for internal classes : their memory is allocated permanently, weither or not they will ever be used, and they will only be destroyed when PHP itself will die : when it has finished treating the number of requests you asked it for (assuming web SAPI, like PHP-FPM f.e), usually, a PHP web worker treats several thousands of requests before dying.
 That's a point why internal classes are more performant than user classes. (Only static attributes will be destroyed at the end of every request, nothing more).</p>
@@ -1727,7 +1737,10 @@ static int clean_non_persistent_class(zend_class_entry **ce TSRMLS_DC)
 {
     return ((*ce)-&gt;type == ZEND_INTERNAL_CLASS) ? ZEND_HASH_APPLY_STOP : ZEND_HASH_APPLY_REMOVE;
 }</code></pre>
-<p>Note that even with an OPCode cache, like OPCache, class creation and destruction still happen at every request, about user declared classes. OPCache only speeds up those two steps.</p>
+<p>Note that even with an OPCode cache, like OPCache, class creation and destruction still happen at every request for user declared classes. OPCache only speeds up those two steps.</p>
+<blockquote>
+<p>Internal class are more performant than user declared classes, just by the fact that they get allocated only once for all, whereas userland declared classes need to be destroyed and reloaded at every request. Internal classes also got many possibilities not available to user classes.</p>
+</blockquote>
 <p>So you have noted, if you activate many PHP extensions that each declare many classes, but you just use a small part of them : you are wasting memory as well.
 Remember that PHP extensions declare their classes at the time PHP starts, even if in later requests to come those classes will not be used.
 That's why we usually tell users to not keep enabled PHP extensions they just don't use : that's a pure memory waste, especially if the extension declares many classes (among other things extension may allocate as well).</p>
@@ -1735,9 +1748,7 @@ That's why we usually tell users to not keep enabled PHP extensions they just do
 <p>PHP uses the same <em>zend_class_entry</em> structure internally to manage PHP classes, PHP interfaces and PHP traits.
 So everytime you declare an interface or a trait, the <em>zend_class_entry</em> will be used as well.</p>
 <blockquote>
-<blockquote>
 <p>Internally, PHP classes, interfaces and traits are managed by the exact same structure : <em>zend_class_entry</em></p>
-</blockquote>
 </blockquote>
 <p>And as you've seen, the structure is heavy.
 Sometimes in code, users declare interfaces to be able to use their name in PHP catch blocks. That allows them to catch one kind of exception only.
@@ -1748,7 +1759,7 @@ class MyException extends Exception implements BarException { }
 try {
     $foo-&gt;bar():
 } catch (BarException $e) { }</code></pre>
-<p>What is pitty here, is that nearly one kilobyte is used, just to declare the <em>BarException</em> interface. Exactly 912 bytes :</p>
+<p>What is pitty here, is that nearly one kilobyte is used, just to declare the <em>BarException</em> interface. Exactly 912 bytes (LP64) :</p>
 <pre><code>$class = &lt;&lt;&lt;'CL'
 interface Bar { }
 CL;
@@ -1758,19 +1769,15 @@ echo memory_get_usage() - $m . "\n"; /* 912 bytes */</code></pre>
 <p>I'm not telling it is bad, nor silly, I'm not blaming anyone nor anything. I just show you facts you perhaps were not aware of.</p>
 <p>So remember, internally, classes and interfaces (and traits), are exactly used the same way. Simply, an interface will not be able to be added attributes, the PHP parser or compiler will forbid this to you, but the <em>zend_class_entry</em> structure is still used, just that its <em>static_members_table</em> and other fields will not be allocated pointers, that's all.</p>
 <blockquote>
-<blockquote>
 <p>Declaring a class or an equivalent trait or equivalent interface, will barely use the same memory amount, as internally, those 3 concepts share the same structure.</p>
-</blockquote>
 </blockquote>
 <h3 id="class-binding">Class binding<a href="#class-binding" class="anchor">#</a></h3>
 <p>Class binding is a hidden thing PHP users are usually not aware of, until they wonder how things work.
 This concept is yet really important to understand, we could define it as "the process that prepares a class and every piece of related data for it to be fully usable by the PHP user".</p>
 <p>This process is very easy and cheap when we talk about a single class, that is a class not extending anyone, not using any trait, and not implementing any interface. The binding process for such class will be entirely done at compile time, that means that it will be very optimized and won't consume some PHP runtime.</p>
-<p>Please, notice here that we're interested in the user declared class binding process. For internal classes, the same process is done when the classes are registered by PHP Core or PHP extensions, this happens very soon before the user scripts are run, and this happens only once in PHP lifetime.</p>
-<blockquote>
+<p>Please, notice here that we're interested in the user-declared-class binding process. For internal classes, the same process is done when the classes are registered by PHP Core or PHP extensions, this happens very soon before the user scripts are run, and this happens only once in PHP lifetime, thus the userland runtime never suffers from that in term of performance.</p>
 <blockquote>
 <p>Binding a single class is entirely done at compile time. On this point, performances tend to reach internal classes'.</p>
-</blockquote>
 </blockquote>
 <p>Things become much more complicated when we talk about interfaces implementations, or class inheritance.
 In such case, class binding will mainly copy every thing of interest from the parent to the child, would both be classes or interfaces. Let's see that :</p>
@@ -1814,32 +1821,34 @@ case ZEND_DECLARE_CLASS:
 <li>Add the interface and all its possible mother interfaces to the interface list the class implements</li>
 </ul><p>But take care, when we say "copy", this is not a full deep copy, constants, attributes and functions are all refcounted : the refcount is just incremented by one, meaning one more entity into memory is using the item.</p>
 <blockquote>
-<blockquote>
-<p>Constants, attributes and functions are all refcounted</p>
-</blockquote>
+<p>Binding a class, is barely copying every constant/attributes/methods from its parent, and its interfaces into the current class body - while performing checks.
+The class needs to be fully resolved and ready for use at runtime.
+Constants, attributes and functions are all refcounted, no real copies take place, but the binding process is still not a light step in terms of performance.</p>
 </blockquote>
 <pre><code>ZEND_API void zend_do_implement_interface(zend_class_entry *ce, zend_class_entry *iface TSRMLS_DC)
 {
     /* ... ... */
 
     } else {
-        if (ce-&gt;num_interfaces &gt;= current_iface_num) {
+        if (ce-&gt;num_interfaces &gt;= current_iface_num) { /* resize the vector if needed */
             if (ce-&gt;type == ZEND_INTERNAL_CLASS) {
                 ce-&gt;interfaces = (zend_class_entry **) realloc(ce-&gt;interfaces, sizeof(zend_class_entry *) * (++current_iface_num));
             } else {
                 ce-&gt;interfaces = (zend_class_entry **) erealloc(ce-&gt;interfaces, sizeof(zend_class_entry *) * (++current_iface_num));
             }
         }
-        ce-&gt;interfaces[ce-&gt;num_interfaces++] = iface;
+        ce-&gt;interfaces[ce-&gt;num_interfaces++] = iface; /* Add the interface to the class */
 
+        /* Copy every constants from the interface constants table to the current class constants table */
         zend_hash_merge_ex(&amp;ce-&gt;constants_table, &amp;iface-&gt;constants_table, (copy_ctor_func_t) zval_add_ref, sizeof(zval *), (merge_checker_func_t) do_inherit_constant_check, iface);
+        /* Copy every methods from the interface methods table to the current class methods table */
         zend_hash_merge_ex(&amp;ce-&gt;function_table, &amp;iface-&gt;function_table, (copy_ctor_func_t) do_inherit_method, sizeof(zend_function), (merge_checker_func_t) do_inherit_method_check, ce);
 
         do_implement_interface(ce, iface TSRMLS_CC);
         zend_do_inherit_interfaces(ce, iface TSRMLS_CC);
     }
 }</code></pre>
-<p>Notice the difference between internal classes and user ones ? The former will use <code>realloc()</code> to allocate memory, while the later will use <code>erealloc()</code>. Like I said : <code>realloc()</code> will allocated "permanent" memory, whereas <code>erealloc()</code> will allocate "request-bound" memory, like said earlier.</p>
+<p>Notice the difference between internal classes and user ones ? The former will use <code>realloc()</code> to allocate memory, while the later will use <code>erealloc()</code>. Like I said : <code>realloc()</code> will allocate "permanent" memory, whereas <code>erealloc()</code> will allocate "request-bound" memory.</p>
 <p>So, you can see that when the two constant tables are merged (the interface one and the class one), <code>zval_add_ref</code> is used as merge callback : it will not copy the constant from one table to another, but share its pointer just adding a refcount.</p>
 <p>For the functions tables (methods), <code>do_inherit_method</code> is run for any of them. Here it is :</p>
 <pre><code>static void do_inherit_method(zend_function *function)
@@ -1866,13 +1875,11 @@ ZEND_API void function_add_ref(zend_function *function)
 }</code></pre>
 <p>The function's OPArray is added a refcount, and every possible static variables declared in the function (which here is a method) is also copied, again also using <code>zval_add_ref</code>.</p>
 <p>Thus, the overall copy process is heavy in term of CPU because it involves many loops and checks, but in term of memory usage, we are really kind here.
-Unfortunately, the interface binding is nowadays fully delayed at runtime, and you will suffer from it at every request. I'm planning to change that soon.</p>
-<p>When it comes to talk about inheritance, well, the process is barely the same as interface implementation, thus it is even more complicated because it involves more stuff.
+Unfortunately, the interface binding is nowadays fully delayed at runtime, and you will suffer from it at every request.</p>
+<p>When it comes to talk about inheritance, well the process is barely the same as interface implementation, thus it is even more complicated because it involves more stuff.
 What is interesting to note however, is that the binding is done at compile time if PHP already knows about the class, and in runtime for the opposite case</p>
 <blockquote>
-<blockquote>
 <p>The inheritance binding is done at compile time if PHP already knows the parent class, and in runtime for the opposite case.</p>
-</blockquote>
 </blockquote>
 <p>So you'd better declare things like this :</p>
 <pre><code>/* good */
@@ -1882,6 +1889,7 @@ class B extends A { }</code></pre>
 <pre><code>/* bad */
 class B extends A { }
 class A { }</code></pre>
+<p>If you use an autoloader and one-class-per-file rule, PHP will likely never known one class' ancestors when it comes to parse it, and thus, will delay the class binding at runtime.</p>
 <p>Class binding routine can even lead to very strange behaviors, like :</p>
 <pre><code>/* this code snippet works */
 class B extends A { }
@@ -1903,17 +1911,15 @@ But when the runtime fires to bind C, it looks for B, which doesn't exist, becau
 <li>Classes, interfaces or traits use the exact same structure and same procedures, very little differences</li>
 <li>When doing inheritance or implementations, the binding process is heavy and long for CPU, but light about memory usage as many things are shared and not duplicated. Also, you'd better have class binding fire at compile time</li>
 </ul><p>Now let's talk about our objects.</p>
-<p>Our first chapter showed that creating a "classical" object, of a "classical" user class (that is : there is nothing special in there), the object creation was very light in term of memory, something like a ridiculous amount of 200 bytes...</p>
+<p>Our first chapter showed the creation of a "classical" object from a "classical" user class (that is : there is nothing special in there), the object creation was very light in term of memory, something like a ridiculous amount of 200 bytes on LP64 platform.</p>
 <p>This, is because of the class.
-The class itself has been compiled, and this latter eats memory; but that's for the good : this is to make every single object eat less memory</p>
+The class itself has been compiled, and this latter eats memory; but that's for the good : this is to make every single object eat less memory.</p>
 <p>An object is in fact a ridiculously tiny set of tiny structures.</p>
 <h3 id="object-methods-management">Object methods management<a href="#object-methods-management" class="anchor">#</a></h3>
 <blockquote>
-<blockquote>
-<p>Methods and functions are exactly the same into the engine : a zend_function structure (union). This is just vocabulary ("method", "function").</p>
+<p>Reminder: Methods and functions are exactly the same into the engine : a <em>zend_function</em> structure (union). This is just vocabulary, and the fact that methods are the only place where <code>$this</code> can be used.</p>
 </blockquote>
-</blockquote>
-<p>Methods are represented by an union (zend_function). Methods are compiled by the PHP compiler, and added to the <em>function_table</em> attribute of the <em>zend_class_entry</em>. So at runtime every method is present, this is just a matter of fetching back its pointer to execute it.</p>
+<p>Methods are represented by an union (<em>zend_function</em>). Methods are compiled by the PHP compiler, and added to the <em>function_table</em> attribute of the <em>zend_class_entry</em>. So at runtime every method is present, this is just a matter of fetching back its pointer to execute it.</p>
 <pre><code>typedef union _zend_function {
     zend_uchar type;
 
@@ -1931,7 +1937,7 @@ The class itself has been compiled, and this latter eats memory; but that's for 
     zend_op_array op_array;
     zend_internal_function internal_function;
 } zend_function;</code></pre>
-<p>When an object tries to invoke a method, the engine by default, will lookup into the object's class function table to invoke it, and if the method doesn't exist, it will invoke the magic <code>__call()</code>. It will also check visibility (public/protected/private), and act accordingly :</p>
+<p>When an object tries to invoke a method, the engine will by default lookup into the object's class function table to invoke it, and if the method doesn't exist, it will invoke the magic <code>__call()</code>. It will also check visibility (public/protected/private), and act accordingly :</p>
 <pre><code>static union _zend_function *zend_std_get_method(zval **object_ptr, char *method_name, int method_len, const zend_literal *key TSRMLS_DC)
 {
     zend_function *fbc;
@@ -1988,7 +1994,8 @@ The class itself has been compiled, and this latter eats memory; but that's for 
         zend_str_tolower_copy(lc_method_name, method_name, method_len);
         hash_value = zend_hash_func(lc_method_name, method_len+1);
     }</code></pre>
-<p>This is PHP case insensibility. PHP must turn every function to lowercase (<code>zend_str_tolower_copy()</code>), before calling it. Not every function, there is an <code>if</code> statement. The <code>key</code> variable prevents the code from running the case lowering function (the <code>else</code> part), and this <code>key</code> is an optimization that has been added starting from PHP5.4. If the method call is not dynamic, the compiler has already computed the key, and the runtime will have less job to do.</p>
+<p>This is PHP case insensibility. PHP must turn every function to lowercase (<code>zend_str_tolower_copy()</code>), before calling it. This is not a heavy step, but it can seem pretty wasteful, considering it must happen for every method call for every class. This will burn some more CPU cycles for nothing really usefull, and you'd better prevent it.</p>
+<p>Look carefully at the code, there is an <code>if</code> statement. The <code>key</code> variable prevents the code from running the case lowering function (the <code>else</code> part), and this <code>key</code> is an optimization that has been added starting from PHP 5.4. If the method call is not dynamic, the compiler has already computed the key, and the runtime will have less job to do.</p>
 <pre><code>class Foo { public function BAR() { } }
 $a = new Foo;
 $b = 'bar';
@@ -1997,28 +2004,26 @@ $a-&gt;bar(); /* static call : good */
 $a-&gt;$b(); /* dynamic call : bad */</code></pre>
 <p>When the compiler compiles a function/method, it immediately lowercases it. The above function <code>BAR()</code> is turned into <code>bar()</code> by the compiler, when it adds the method to the class function table.</p>
 <blockquote>
-<blockquote>
-<p>The compiler turns every function/method name to lowercase when it compiles it</p>
+<p>The compiler turns every function/method name to lowercase when it compiles it. PHP really is case-insensible when we talk about functions/methods.</p>
 </blockquote>
-</blockquote>
-<p>When the call happens, on the example above, the first call is static : the compiler have computed the <code>key</code> for the string "bar", and then when it comes to run the method call, it has less job to do.
-The second call above however, is dynamic; then the compiler knows nothing about "$b" : it can't compute a <code>key</code> for the method call, we will then fall into the <code>else</code> case at runtime, and we will have to both turn the string to lowercase, and to compute its hash (<code>zend_hash_func()</code>) at runtime, which is not especially what you're looking for if we talk about performances.</p>
+<p>When the method call happens, on the example above, the first call is static : the compiler have computed the <code>key</code> for the string "bar", and then when it comes to run the method call, it has less job to do.
+The second call above however, is dynamic; the compiler knows nothing about "$b" : it can't compute a <code>key</code> for the method call, we will then fall into the <code>else</code> case at runtime, and we will have to both turn the string to lowercase, and to compute its hash (<code>zend_hash_func()</code>) at runtime, which is not especially what you're looking for if we talk about performances.</p>
 <p>About <code>__call()</code>, it is not that bad about performances, there is however more work to do than calling an existing function though.</p>
 <h3 id="object-attributes-management">Object attributes management<a href="#object-attributes-management" class="anchor">#</a></h3>
 <p>Here is what happens :</p>
 <p><img alt="PHP-objects-and-class-attributes" src="../../../img/php-objects/PHP-objects-and-class-attributes.png"></p>
 <p>As you can see, when you create several objects of the same class, the engine will make every attribute point on the same pointer as the one defined into the class attributes.
-The class stores the attributes, not only its own, static attributes, but also objects ones, for the life of the class : forever for internal classes, request bound lifetime for user classes. Creating an object does not involve creating its attributes, thus, that's a fast and memory saver approach.
+The class stores the attributes, not only its own static attributes - but also objects ones - for the life of the class : forever for internal classes, request bound lifetime for user classes. Creating an object does not involve creating its attributes, thus, that's a fast and memory saver approach.
 Only at the time an object is going to change one of its attribute, the engine will create a new one and affect it, assuming you change the $a attribute on the object Foo #2 :</p>
 <p><img alt="PHP-objects-cow" src="../../../img/php-objects/PHP-objects-cow.png"></p>
-<p>So creating an object, is in fact "just" creating a <em>zend_object</em> structure, which weight 32 bytes :</p>
+<p>So creating an object, is in fact "just" creating a <em>zend_object</em> structure, which weight 32 bytes under LP64...</p>
 <pre><code>typedef struct _zend_object {
     zend_class_entry *ce;
     HashTable *properties;
     zval **properties_table;
     HashTable *guards; /* protects from __get/__set ... recursion */
 } zend_object;</code></pre>
-<p>And add this new <em>zend_object</em> to the object store. The object store is a <em>zend_object_store</em> structure : it is the global Zend Engine registry of objects, the place where in every object is stored exactly once :</p>
+<p>...add this new <em>zend_object</em> to the object store. The object store is a <em>zend_object_store</em> structure : it is the global Zend Engine registry of objects, the place where in every object is stored exactly once :</p>
 <pre><code>ZEND_API zend_object_value zend_objects_new(zend_object **object, zend_class_entry *class_type TSRMLS_DC)
 {
     zend_object_value retval;
@@ -2059,13 +2064,11 @@ Only at the time an object is going to change one of its attribute, the engine w
 <p>Like you can see, we allocate a pure C table/vector of <code>zval*</code> based on the object's class declared properties, and, in case of non thread safe PHP, we just add a refcount to the property, whereas using Zend thread safety (ZTS), we must deeply copy the zval.
 That's one of the numerous point that confirms that ZTS mode is slower and more resource user than a non ZTS PHP.</p>
 <blockquote>
-<blockquote>
 <p>PHP running with ZendThreadSafety activated (ZTS) is both slower and less memory friendly than a non-ZTS PHP.</p>
-</blockquote>
 </blockquote>
 <p>Now you wonder two things :</p>
 <ul><li>What's the difference bewteen <em>properties_table</em> and <em>properties</em> in the <em>zend_object</em> structure ?</li>
-<li>If we affected our object's attributes in a C vector, how will we fetch them back ? Browser the vector every time ? (counter-performant)</li>
+<li>If we affected our object's attributes in a C vector, how will we fetch them back ? Browse the vector every time ? (counter-performant)</li>
 </ul><p>The answer to both those questions relies in a clever trick : <em>zend_property_info</em>.</p>
 <p>Here is <em>zend_property_info</em> :</p>
 <pre><code>typedef struct _zend_property_info {
@@ -2120,7 +2123,7 @@ if (EXPECTED(property_info != NULL) &amp;&amp;
         guard-&gt;in_set = 0;
         zval_ptr_dtor(&amp;object);
     /* ... ... */</code></pre>
-<p>So, until you write to your object, its memory consumption will not vary. When you write to it, you start making it bigger, as it will retain the attributes you wrote into it, until it dies.</p>
+<p>So, until you write to your object, its memory consumption will not vary. When you write to it, you start making it bigger, as it will retain the attributes you wrote into it, until it dies. Methods do not consume any memory related to the object, but they belong to the class.</p>
 <h2 id="objects-acting-as-references-thanks-to-the-object-store">Objects acting as references, thanks to the object store<a href="#objects-acting-as-references-thanks-to-the-object-store" class="anchor">#</a></h2>
 <p>Objects are not references. I demonstrate it in a small script :</p>
 <pre><code>function foo($var) {
@@ -2129,12 +2132,10 @@ if (EXPECTED(property_info != NULL) &amp;&amp;
 $o = new MyClass;
 foo($o);
 var_dump($o); /* this is still an object, not the integer 42 */</code></pre>
-<p>Everybody says that "objects are references in PHP5", even the official manual sometimes suggests this ;-) This is horribly wrong technically.
+<p>Everybody says that "objects are references in PHP 5", even the official manual sometimes suggests this ;-) This is horribly wrong technically.
 However, objects borrow references behavior, as when you pass a variable which is an object to a function, this function can modify the same object.</p>
 <blockquote>
-<blockquote>
 <p>Objects are <strong>not</strong> passed by references, this is <strong>wrong</strong>. However, they borrow the same behavior as PHP variables references.</p>
-</blockquote>
 </blockquote>
 <p>This is because in the zval you pass to the function, you don't pass an object precisely, but its unique identifier, that will serve to look it up into the global object store, thus effectively leading to the same object at the end.
 You can end up having 3 different zvals in memory, they can all store into them the same object handle, and then they will lead to the same object into memory.</p>
@@ -2191,9 +2192,9 @@ static zend_bool opline_is_fetch_this(const zend_op *opline TSRMLS_DC)
         return 0;
     }
 }</code></pre>
-<p>You can trick that by many ways, thus it is useless to do so ;-)</p>
+<p>You can trick that by many ways, though it's useless to do so ;-)</p>
 <p>Now how is <code>$this</code> managed ?
-When you call a method, which is the only place where you are allowed to use <code>$this</code>, the compiler emits an <code>INIT_METHOD_CALL</code> OPCode.
+When you call a method - which is the only place where you are allowed to use <code>$this</code> - the compiler emits an <code>INIT_METHOD_CALL</code> OPCode.
 You can read <a href="http://jpauli.github.io/2015/01/22/on-php-function-calls.html">On PHP function calls</a> or <a href="http://jpauli.github.io/2015/02/05/zend-vm-executor.html">getting into the Zend execution engine</a> about OPCodes for functions.
 In the <code>INIT_METHOD_CALL</code>, the engine knows who is calling the method, for <code>$a-&gt;foo()</code> : it is <code>$a</code>.
 It then fetches <code>$a</code>'s value, and memorize it in a global space. Then, it calls the method, issuing a <code>DO_FCALL</code> OPCode. In this OPcode, we fetch back the value memorized (the object calling the method), and we assign it to the internally-global <code>$this</code> pointer : <code>EG(This)</code> :</p>
@@ -2272,9 +2273,7 @@ $a-&gt;foo($b);</code></pre>
 <p>This strangeness has lead to many bugs reported by users, but that's the rule in PHP object model : we don't actually define an object based scope, but a class based scope.
 So in a class "Foo", you can play with every private of every other eventual "Foo" , not only yourself, like the above example demonstrates.</p>
 <blockquote>
-<blockquote>
 <p>PHP's object model scope is class based, not object based.</p>
-</blockquote>
 </blockquote>
 <h2 id="on-destructors">On destructors<a href="#on-destructors" class="anchor">#</a></h2>
 <p>Destructors are dangerous. Don't rely on them, because PHP will even not call them in case of fatal errors :</p>
@@ -2343,11 +2342,9 @@ destroyed Foo</code></pre>
 <p>This procedure has not been randomly chosen. We do things this way, to be extra sure about everything.
 You don't like it ? Destroy your own objects by yourself ! This is the only way to master <code>__destruct()</code> calls. If you leave PHP destroy your objects for you, don't come complaining about the procedure that has been matured for years, you always have the choice of destroying yourself your objects, to master the order of destructs (I tell this because here again, we've been filled tons of bug reports about PHP objects destructors beeing called "strangely").</p>
 <p>However, in case of any fatal error, PHP will not call any destructor, because a fatal error is likely to have left the Zend Engine in an unstable state, and calling destructors will run user code that may access pointers that are invalid now, and then crash PHP.
-We prefer having something stable, and thus we chose not to call destructors in such cases. Things could change in PHP7 about that.</p>
-<blockquote>
+We prefer having something stable, and thus we chose not to call destructors in such cases.</p>
 <blockquote>
 <p>In case of fatal error, PHP will not call any destructor</p>
-</blockquote>
 </blockquote>
 <p>About recursion also : PHP has not many recursion protection. The only ones that exist are about <code>__get()</code> and <code>__set()</code>.
 If you happen, somewhere in the stack frame of your destructor, to destroy an object of your own : you'll find yourself into an infinite recursion loop that will exaust your process stack size (usually 8Kb, <em>ulimit -s</em>), and crash PHP.</p>
@@ -2911,7 +2908,7 @@ echo FOO;</code></pre>
 <p>Now there is still some job to achieve to have a stable OPCache extension for PHP7, whose release is planned for end of 2015. The new PHP7 structures and engine will allow future optimizations to be added to OPCache, boosting even more a language that already showed several hundreds of percent boost in raw performance, compared to PHP5, with no OPCache solution at all. Nice future to come.</p>]]></content>
     </entry>
         <entry>
-        <title>Getting into the Zend Execution engine</title>
+        <title>Getting into the Zend Execution engine (PHP 5)</title>
                 <id>http://jpauli.github.io//2015/02/05/zend-vm-executor.html</id>
                 <updated>2015-02-05T00:00:00+00:00</updated>
         <author>
@@ -3240,7 +3237,7 @@ op1 and op2 type, just to run a different fetch/read code, that would not be ver
 <p>Now, here is the magical stuff : the file this code is written in, <a href="http://lxr.php.net/xref/PHP_5_6/Zend/zend_vm_def.h">zend_vm_def.h</a> , is just a template, that is passed into a processor, which will produce some C valid code (this time) for every handler, <strong>for every combinaison of every operand type</strong>.</p>
 <p>Maths ? 5 different types for op1 multiplied by 5 different types for op2 : ZEND_ADD will be declined as 25 different sepcialized handler functions, and those ones will be written into a file that will itself be compiled as part of the PHP source code.</p>
 <p>This file is named <a href="http://lxr.php.net/xref/PHP_5_6/Zend/zend_vm_execute.h">zend_vm_execute.h</a>, and be carefull as you may have guessed : <strong>it is horribly huge</strong>.</p>
-<p>Maths ? We support 167 OPCodes as of PHP5.6 , imagine all those 167 OPCode handlers accept the full 5 possible combinaisons for both their op1 and op2 ...
+<p>Maths ? We support 167 OPCodes as of PHP 5.6 , imagine all those 167 OPCode handlers accept the full 5 possible combinaisons for both their op1 and op2 ...
 That gives 4175 C functions to store into this file.</p>
 <p>In fact, every OPCode handler will not accept the 5 different possible types of operands, and will lead to less specialized declinations.
 For example :</p>
@@ -3762,7 +3759,7 @@ For exemple OPCache is a zend_extension, because it plays heavilly with the OPCo
 <p><a href="https://blackfire.io/">The Blackfire profiler</a> extension code I work on in my daily job, will soon be able to warn you about such idiot statement in term of performance, and many more I could not show you here ;-)</p>]]></content>
     </entry>
         <entry>
-        <title>On PHP function calls</title>
+        <title>On PHP function calls (PHP 5)</title>
                 <id>http://jpauli.github.io//2015/01/22/on-php-function-calls.html</id>
                 <updated>2015-01-22T00:00:00+00:00</updated>
         <author>
@@ -3826,6 +3823,9 @@ That's two OPCodes for the <code>strlen()</code> code structure and only one for
 <p>Let me warn you : function calls are complex in PHP. If you want to continue reading this part, you'd better fasten your seat belt ;-)
 In PHP's design and source code, the most complex execution part to analyze is all that's related to function calls.
 I will try to sumarize things here, so that you get enough info to understand, without all the full details related to function calls. You still can fetch them by analyzing the source code.</p>
+<blockquote>
+<p>Functions calls is a strongly complex subject into the engine.</p>
+</blockquote>
 <p>Here, we will talk about <em>runtime</em> of a function call. You should know that the <em>compile time</em> PHP function related operations are also heavy to run for the machine (I mean, really heavy), but as you use an OPCode cache, you don't suffer from anything related to compile time (that is transformation of the PHP source code into Zend VM instructions).
 So here, we assume the script is compiled, and we'll analyze what happens at <em>runtime</em> only.</p>
 <p>Let's just dump the OPCode of an internal function call (<code>strlen()</code>, here) :</p>
@@ -4011,7 +4011,7 @@ PHP can define new functions at runtime, and PHP can autoload files, defining cl
     EG(called_scope) = EX(call)-&gt;called_scope;
 }</code></pre>
 <p>You know that each function body has its own variable scope. Well it's not magical : the engine switches the scope tables before calling the function code, so that if this one asks for a variable, it will be looked for into the right table.
-And as functions and methods are all the same, you can read some instructions about binding the <code>$this</code> pointer for a method.
+And as functions and methods are all the same, you can read some instructions about binding the <code>$this</code> pointer for a method. If you want to know more about <code>$this</code>, you should read <a href="http://jpauli.github.io/2015/03/24/zoom-on-php-objects.html#what-is-this">that part of the object related article</a>.
 Let's keep going.</p>
 <pre><code>if (fbc-&gt;type == ZEND_INTERNAL_FUNCTION) {</code></pre>
 <p>I told you, internal functions (those designed in C) take a different execution path from user functions. Usually, internal function execution path is more optimized and shorter than user function one, because for internal functions, in C, we can tell the engine internal info about our function, something user designed functions cant.</p>
@@ -4052,7 +4052,7 @@ So whatever the programmer passed onto the stack to <code>strlen()</code>, this 
     }</code></pre>
 <p>And clearing the stack :</p>
 <pre><code>zend_vm_stack_clear_multiple(1 TSRMLS_CC);</code></pre>
-<p>Finally, if an exception has been thrown during this function execution, we must change the VM path to run the catch block (simplified) :</p>
+<p>Finally, if an exception has been thrown during this function execution, <a href="http://jpauli.github.io/2015/04/09/exceptional-php.html#throwing-an-exception">we must change the VM path to run the catch block</a> (simplified) :</p>
 <pre><code>if (UNEXPECTED(EG(exception) != NULL)) {
         zend_throw_exception_internal(NULL TSRMLS_CC);
         if (RETURN_VALUE_USED(opline) &amp;&amp; EX_T(opline-&gt;result.var).var.ptr) {
@@ -4064,11 +4064,11 @@ So whatever the programmer passed onto the stack to <code>strlen()</code>, this 
 <p>Now, can you imagine the time your machine spends for calling a very-tiny-and-simple <code>strlen()</code> function ?
 Now multiply this time, because <code>strlen()</code>is called into a loop, with 25,000 iterations, slowly, micro/milli seconds turn to seconds...
 Keep in mind that I just showed you the hot path of instructions beeing run at every PHP function call. Many other things happen as well next to those mandatory steps.
-Also keep in mind that here, because <code>strlen()</code> "useful work" is just one line, the overhead of the engine preparing the function call is larger than the useful function code itself, but that is generaly not the case of a big average of function calls, where the own code of the function itself will consume hopefuly more performance than the noisy surrounding engine code.</p>
+Also keep in mind that here, because <code>strlen()</code> "useful work" is just one line, the overhead of the engine preparing the function call is larger than the useful function code itself, but that is generaly not the case of a big average of function calls, where the own code of the function itself will consume hopefuly more performance than the noisy surrounding engine code required to launch it.</p>
 <p>You may complain about this. You have this right, but please, don't come to me complaining without proposing a valid technical solution to improve this, knowing that if you break compatibility, you'll have to show strong arguments about this ;-)</p>
-<p>The PHP-function-call-related part of the code has been reworked into PHP7 (among many things), and in PHP7, function calls are faster than this. As you can imagine by reading this : there is lot of room for optimization yet into PHP source code, and we, as contributors, try to find ways to optimize things at every new PHP version.</p>
-<p>Not only talking about PHP7, the PHP-function-call-related code has been optimized in every version of PHP, from 5.3 to 5.4, and especially from 5.4 to 5.5, where we changed the way the stack frame is computed and created, for example (without breaking compatibility).
-It is always interesting to read the readme about internals change of each PHP version. <a href="https://github.com/php/php-src/blob/PHP-5.5/UPGRADING.INTERNALS#L24">Here is the one for PHP5.5</a> talking about changes into the executor and into how function calls are performed, compared to PHP54.</p>
+<p>The PHP-function-call-related part of the code has been reworked into PHP 7 (among many things), and in PHP 7, function calls are faster than this. As you can imagine by reading this : there is lot of room for optimization yet into PHP source code, and we, as contributors, try to find ways to optimize things at every new PHP version.</p>
+<p>Not only talking about PHP 7, the PHP-function-call-related code has been optimized in every version of PHP, from 5.3 to 5.4, and especially from 5.4 to 5.5, where we changed the way the stack frame is computed and created, for example (without breaking compatibility).
+It is always interesting to read the readme about internals change of each PHP version. <a href="https://github.com/php/php-src/blob/PHP-5.5/UPGRADING.INTERNALS#L24">Here is the one for PHP5.5</a> talking about changes into the executor and into how function calls are performed, compared to PHP 5.4.</p>
 <p>As a conclusion, remember that this is not a blame to PHP. The PHP source code has been worked for twenty years now, by many different very talented brains, so believe me : it has been thought, worked and optimized many times as of nowadays.
 The proof is that you use PHP, you have some PHP code in production, and it just works and perform very well, with a nice overall performance factor in the very large majority of use cases. Am I wrong ?</p>
 <h3 id="what-about-isset">What about isset() ?<a href="#what-about-isset" class="anchor">#</a></h3>
@@ -4167,7 +4167,7 @@ PHP compiler, or OPCache optimization passes.</p>
 <h2 id="optimization-tips-and-conclusion">Optimization tips and conclusion<a href="#optimization-tips-and-conclusion" class="anchor">#</a></h2>
 <p>The first tip I would like to share with you, is to not blindly change your code, everywhere you have a good feeling of it.
 Profile. Profile, and see the results.
-With profilers such as <a href="https://blackfire.io/">Blackfire</a>, you can immeditely see the hot path of your script, because it automaticaly trashes the irrelevant
+With profilers such as <a href="https://blackfire.io/">Blackfire</a>, you can immediately see the hot path of your script, because it automaticaly trashes the irrelevant
 information that usually catch your eyes when you read a profile.
 You then know <em>where</em> to start working, because your work costs money, and for it to be worth it, it has to be optimized as well.
 That's a nice balance between the money you'll cost optimizing a script, and the money you'll save because your cloud will be smaller
@@ -4179,7 +4179,7 @@ The main trick is to optimize what is repeated : loops. If you use a profiler sh
 you'll happen to find that it is likely to be located into loops.
 That's the same when we, as contributors, optimize PHP itself : we won't bother optimizing a part of code a few users will trigger, but better
 optimize the hot path : variable accesses, engine function calls, etc... Because in here, the very little micro-second earned
-will translate to final milli-seconds or even seconds, as such code is run tons of times (usually involving in loops).
+will translate to final milli-seconds or even seconds, as such code is run tons of times (usually involving loops).
 Except <code>foreach()</code>, in PHP, loops are the same and lead to the same OPCode. Turning a PHP's <code>while</code> loop into a <code>for</code> loop is
 both useless and silly. Once more : profiling will tell you that.</p>
 <p>So, about function calls, well... A language needs function calls ;-)
@@ -4836,7 +4836,7 @@ Plugins may be developed in C and some already exist :</p>
 <p>Special thanks to Ulf Wendel, Andrey Hristov, Georg Richter and Johannes Schl&uuml;ter ; main mysqlnd creators.</p>]]></content>
     </entry>
         <entry>
-        <title>PHP memory and Zend Memory Manager</title>
+        <title>PHP memory and Zend Memory Manager (PHP 5)</title>
                 <id>http://jpauli.github.io//2014/07/02/php-memory.html</id>
                 <updated>2014-07-02T00:00:00+00:00</updated>
         <author>
@@ -4905,25 +4905,27 @@ int main(int argc, char *argv[])
 <p>We stop here. Just note that depending on the allocation class, the memory area will differ.
 An automatic allocation is done on the stack, a dymanic allocation on the heap and a static is done in the BSS or Data segment of your ELF binary.</p>
 </blockquote>
-<p>Dynamic allocation is really frequently used. PHP uses it as well. It is available through libc's <code>malloc()</code> and <code>free()</code> functions.
-As PHP is a long-living process, often a daemon (FastCGI or into Apache using mod_php), any leak will hurt not only PHP, but the whole machine.
-As PHP is designed into hundreds of thousands of lines of C code, generating a leak is really really easy. There must be a solution to prevent leaks, and PHP's got a layer that is dedicated in
+<p>Dynamic allocation is really frequently used, as many data are not known at the time the program is run, thus no memory size can yet be figured out, and will only be at runtime. PHP uses lots of dynamic allocation, just by the dynamic nature of the language itself : it doesn't know when you compile it, what size your variables will be, for example.
+Dynamic allocation is available through libc's <code>malloc()</code> and <code>free()</code> functions, themselves being wrappers over the OS Kernel user-land memory services, like <code>sbrk()</code> or <code>mmap()</code>.
+As PHP is a long-living process, often a daemon (FastCGI, PHP-FPM or Apache's mod_php), any memory leak will hurt not only PHP but the whole system.
+Because PHP is designed into hundreds of thousands of lines of C code, generating a leak in dynamic memory allocation is really really easy. There must be a solution to prevent leaks or help tracking them, and PHP's got a layer that is dedicated in
 dynamic memory management and leak tracking : Zend Memory Manager (ZendMM).</p>
 <h2 id="dynamic-memory-allocation-problems-regarding-php">Dynamic memory allocation problems regarding PHP<a href="#dynamic-memory-allocation-problems-regarding-php" class="anchor">#</a></h2>
 <h3 id="os-differences">OS differences<a href="#os-differences" class="anchor">#</a></h3>
-<p>Libc's is a wrapper over the Kernel services, and the Kernel is really different according to OS. Windows and Linux for example, are really different. Unix flavours as well.</p>
+<p>Libc's is a wrapper over the Kernel services, and the Kernel is really different according to the OS. Windows and Linux for example, are really different. Unix flavours as well.</p>
 <p><img alt="ZendMM" src="../../../img/php-memory/zendMM.png"></p>
 <h3 id="heap-fragmentation">Heap fragmentation<a href="#heap-fragmentation" class="anchor">#</a></h3>
 <p>To understand heap fragmentation, you should write your own memory manager in C. This is an exercize you usually have to deal with in your studies.
 <code>malloc()</code> manages a heap that it cuts into blocs. When you free a bloc, you create a hole in the heap. As any bloc in the heap is managed into binary trees or linked lists, the more holes you
-create, the more CPU cycles will be needed for the next <code>malloc()</code> call to succeed. It also happens that a call to <code>free()</code> triggers a heap compacting algorithm, which is usually very CPU intensive as well.
+create, the more CPU cycles will be needed for the next <code>malloc()</code> call to succeed (best-fit algorithm). It also happens that a call to <code>free()</code> triggers a heap compacting algorithm, which is usually very CPU intensive as well.
 Those are well known problems, and any "serious" software have dealed with them by creating a (usually very complex and big) layer over malloc/free duo, and the program asks for dynamic memory
 using this specific layer.</p>
 <blockquote>
 <p>As an example, you may read the <a href="http://apr.apache.org/docs/apr/0.9/group__apr__pools.html">Apache server's dynamic memory library</a>. Big projects such as Firefox or MySQL have even more complex and exciting layers.</p>
 </blockquote>
-<p>Zend Memory Manager is PHP's dynamic allocation layer. It's been designed to offer good performances to PHP, by managing an internal heap over the process heap.
-For more information about malloc/free internals, you may start your readings by <a href="http://phrack.org/issues/57/9.html">Once uppon a free()</a> or <a href="http://www.gnu.org/software/libc/manual/html_node/Unconstrained-Allocation.html">the Glibc manual</a></p>
+<p>Zend Memory Manager (ZendMM) is PHP's dynamic allocation layer. It's been designed to offer good performances for the PHP case, by managing an internal heap over the process heap. You know that PHP is share-nothing-architecture designed, that means that at the end of one web request, PHP will discard any memory allocation done during the request so that it cleans the room for the next request to come.
+This is done using the Zend Memory Manager.</p>
+<p>For more information about malloc/free internals, you may start your readings by <a href="http://phrack.org/issues/57/9.html">Once uppon a free()</a> or <a href="http://www.gnu.org/software/libc/manual/html_node/Unconstrained-Allocation.html">the Glibc manual</a></p>
 <h3 id="managing-memory-leaks">Managing memory leaks<a href="#managing-memory-leaks" class="anchor">#</a></h3>
 <p>Ah... memory leaks... a whole story every programmer knows about. Fortunately, there exists tools to track them, and they work pretty nicely. valgrind, mtrace, ccmalloc, electric fence...
 Let's see how valgrind does the job :</p>
@@ -4964,9 +4966,9 @@ $ valgrind --tool=memcheck --leak-check=full ./leak
 ==9488== 
 ==9488== For counts of detected and suppressed errors, rerun with: -v
 ==9488== ERROR SUMMARY: 1 errors from 1 contexts (suppressed: 4 from 4)</code></pre>
-<p>Valgrind is a very powerful tool. It tracks leaks, but also invalid accesses, which may be dangerous about program security (nul pointer dereference, write out of alloc'ed bounds, memory leaks, overlaping zones, etc...).</p>
-<p>Whatever tool you use, the tool helps you track the problem but won't make it disappear magically. This is your work guy.
-As the program gets bigger, it becomes more and more difficult to track the leaks. A solution is to rely on a layer that embeds some checks about leaks or security. Zend Memory Manger does that for PHP, and trully helps a lot designing extensions or patching PHP itself.</p>
+<p>Valgrind is a very powerful tool. It tracks leaks, but also invalid accesses which may be dangerous about program security (null pointer dereference, write out of alloc'ed bounds, memory leaks, overlaping zones, etc...).</p>
+<p>Whatever tool you use, the tool helps you track the problem but won't make it disappear magically : this is your work.
+As the program gets bigger, it becomes more and more difficult to track the leaks. A solution is to rely on a layer that embeds some checks about leaks or security. Zend Memory Manager does that for PHP, and trully helps a lot designing extensions or patching PHP itself.</p>
 <p>Here is a quick example of ZendMM usage :</p>
 <pre><code>PHP_FUNCTION(make_leak)
 {
@@ -4980,26 +4982,26 @@ $&gt; php /tmp/leak_check.php
 /usr/local/src/php/ext/leak/leak.c(172) :  Freeing 0x01DBB2E0 (200 bytes), script=/tmp/leak_check.php
 === Total 1 memory leaks detected ===</code></pre>
 <p>You can easilly see the stderr output : it tells you're leaking some memory, and it tells you in which place in your code (in the example : leak.c line 172).
-What you have to do is to use ZendMM specific alloc functions in place of the default libc's ones. Easy to do. ZendMM will then track any allocation you ask for, and checks that you effectively free them.
-It will also implement guards (known as <em>canaries</em>) to inform you if you write past the allocated blocks, which is a very nice feature to count on as well because forgetting a +1 or -1 in an allocation is really frequent, particularly in PHP.</p>
+What you have to do is to use ZendMM specific alloc functions in place of the default libc's ones; ZendMM will then track any allocation you ask for, and checks that you effectively free them until the end of the current web request.
+It will also implement guards (known as <em>canaries</em>) to inform you if you write past the allocated blocks, which is a very nice feature to count on as well because forgetting a +1 or -1 in an allocation is really frequent.</p>
 <blockquote>
-<p>Reminder : ZendMM only complains about leaks and overlaps if PHP's been built in debug mode (--enable-debug), so this is not the case for any "traditionnal" PHP build.</p>
+<p>Reminder : ZendMM only complains about leaks and overlaps if PHP's been built in debug mode (--enable-debug), so this is not the case for any "traditionnal" PHP build. Also, ZendMM only takes care of request-bound allocations; most of them are of this kind, but some allocations may need to "persist" through different requests. Those latter are not managed using ZendMM but traditionnal libc calls (mainly).</p>
 </blockquote>
 <h2 id="introduction-to-zend-memory-manager">Introduction to Zend Memory Manager<a href="#introduction-to-zend-memory-manager" class="anchor">#</a></h2>
 <h3 id="goals">Goals<a href="#goals" class="anchor">#</a></h3>
 <ul><li>Prevent heap fragmentation by reimplementing a custom heap onto the process' heap. Segmentation, pools and alignment features are in ;</li>
-<li>scream at your face about memory leaks or overlaps, very usefull when designing PHP extensions ;</li>
+<li>Scream at your face about memory leaks or overlaps in the current web request ;</li>
 <li>Automatically free leaked memory at request shutdown ;</li>
-<li>Monitor and limit memory usage into all PHP (memory_limit) ;</li>
+<li>Monitor and limit memory usage into all PHP (<em>memory_limit</em>) ;</li>
 <li>Allow to choose the low level allocation stack (depends on OS) ;</li>
 <li>Allow beeing disabled, so that any memory check tool like valgrind is not hindered by ZendMM.</li>
-</ul><p>Zend Memory Manager appeared in PHP4 and has been fully redesigned in PHP5.2.</p>
+</ul><p>Zend Memory Manager appeared in PHP 4 and has been fully redesigned in PHP 5.2 and in PHP 7.0</p>
 <h3 id="configuration">Configuration<a href="#configuration" class="anchor">#</a></h3>
 <p>Zend Memory Manager (ZendMM) is enabled by default, and can be disabled (it will still be here, but skirted). It will however change its behavior depending on your compilation options.
 A debug PHP build will have a ZendMM telling you about leaks on stderr, if <em>report_memleaks=1</em> in php.ini.</p>
 <p><img alt="ZendMM-phpinfo" src="../../../img/php-memory/zendMM-phpinfo.png"></p>
-<p>Then comes four env variables to set up ZendMM at runtime : <strong>USE_ZEND_ALLOC</strong>, <strong>ZEND_MM_MEM_TYPE</strong>, <strong>ZEND_MM_SEG_SIZE</strong> and <strong>ZEND_MM_COMPACT</strong>.
-If <strong>USE_ZEND_ALLOC</strong> is set to 0, ZendMM is diabled and any call to its functions will be proxied to the OS's low level call, usually malloc/free. <code>phpinfo()</code> will then tell you Zend Memory Manager is disabled.</p>
+<p>Then come four environment variables to set up ZendMM at runtime : <strong>USE_ZEND_ALLOC</strong>, <strong>ZEND_MM_MEM_TYPE</strong>, <strong>ZEND_MM_SEG_SIZE</strong> and <strong>ZEND_MM_COMPACT</strong>.
+If <strong>USE_ZEND_ALLOC</strong> is set to 0, ZendMM is disabled and any call to its functions will be proxied to the OS's low level call, usually malloc/free. <code>phpinfo()</code> will then tell you Zend Memory Manager is disabled. We use this to short-circuit ZendMM and run PHP under valgrind, f.e.</p>
 <p><strong>ZEND_MM_MEM_TYPE</strong> defines the low level implementation ZendMM should rely on. Default is "malloc", but you can choose between "mmap_anon" - "mmap_zero" - or "win32".</p>
 <p><strong>ZEND_MM_SEG_SIZE</strong> defines the allocation step. Its like Kernel's PAGESIZE, the minimum allocation unit to use. Default is 256Kb which is a good value. More on that later.</p>
 <pre><code>$ USE_ZEND_ALLOC=0 valgrind --tool=memcheck php /tmp/small.php 
@@ -5034,22 +5036,24 @@ $ valgrind --tool=memcheck ./php /tmp/small.php
 ==6866== For counts of detected and suppressed errors, rerun with: -v
 ==6866== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 4 from 4)</code></pre>
 <blockquote>
-<p>Reminder : PHP memory consumption depends on the run script, and also on PHP extensions which can allocate many memory.</p>
-<p>Note : PHP memory consumption is weaker when ZendMM is enabled, and you don't see it but can benchmark it : PHP is faster when ZendMM is enabled. This is obvious, as ZendMM has been designed to fit PHP's memory needs : it preallocates known-size blocs and manages internal lists about them more efficiently than malloc would do. It also prevents many <code>malloc()</code> calls, as the valgrind print above shows.</p>
+<p>Reminder : PHP memory consumption depends on the run script, and also on PHP extensions which can allocate many memory.
+ZendMM only measures and manages request-bound memory allocations ; every "permanent" alloc done using directly malloc() is not accounted here.</p>
 </blockquote>
+<p>PHP memory consumption is weaker when ZendMM is enabled. Also, PHP is faster when ZendMM is enabled.
+This is obvious as ZendMM has been designed to fit PHP's memory needs : it preallocates known-size blocs and manages internal lists about them more efficiently than malloc would do. It also prevents many <code>malloc()</code> calls, as the valgrind output shows (above).</p>
 <pre><code>$&gt; ZEND_MM_SEG_SIZE=8k php /tmp/my_script.php</code></pre>
 <p>Here, ZendMM will ask the underneath layer for 8Kb allocs.</p>
 <p><strong>ZEND_MM_MEM_TYPE</strong> lets you choose the underneath layer to use. Libc's <code>malloc()</code> is used by default.</p>
 <p><strong>ZEND_MM_COMPACT</strong> tells ZendMM the size from which it must compact the internal heap. This feature is not enabled under Unix OSes.</p>
 <h2 id="how-does-zendmm-work">How does ZendMM work ?<a href="#how-does-zendmm-work" class="anchor">#</a></h2>
 <p>ZendMM is an allocator, so its operation is close to any memory allocator. Here are its structures :</p>
-<ul><li>zend_mm_heap : the heap ;</li>
-<li>zend_mm_mem_handlers : the bottom allocators available handlers (malloc, mmap_anon, win32...) ;</li>
-<li>zend_mm_segment : memory segments. Linked list ;</li>
-<li>zend_mm_block / zend_mm_free_block : memory blocs (usefull blocs), pluggued into segments.</li>
+<ul><li><em>zend_mm_heap</em> : the heap ;</li>
+<li><em>zend_mm_mem_handlers</em> : the bottom allocators available handlers (malloc, mmap_anon, win32...) ;</li>
+<li><em>zend_mm_segment</em> : memory segments. Linked list ;</li>
+<li><em>zend_mm_block</em> &amp; <em>zend_mm_free_block</em> : memory blocs (usefull blocs), pluggued into segments.</li>
 </ul><p>I wont detail too much ZendMM as it may become very complex if you are not comfortable with memory allocators, and such details are useless here.</p>
 <h3 id="noticeable-structures">Noticeable structures<a href="#noticeable-structures" class="anchor">#</a></h3>
-<p>zend_mm_mem_handlers is the low-level allocator to be used by ZendMM, it is then full of function pointers. malloc-based allocator is defined into the <strong>ZEND_MM_MEM_MALLOC_DSC</strong> macro.</p>
+<p><em>zend_mm_mem_handlers</em> is the low-level allocator to be used by ZendMM, it is then full of function pointers. malloc-based allocator is defined into the <strong>ZEND_MM_MEM_MALLOC_DSC</strong> macro.</p>
 <pre><code>typedef struct _zend_mm_mem_handlers {
     const char *name;
     zend_mm_storage* (*init)(void *params);
@@ -5060,11 +5064,15 @@ $ valgrind --tool=memcheck ./php /tmp/small.php
     void (*_free)(zend_mm_storage *storage, zend_mm_segment *ptr);
 } zend_mm_mem_handlers;
 
-#define ZEND_MM_MEM_MALLOC_DSC {"malloc", zend_mm_mem_dummy_init, zend_mm_mem_dummy_dtor, zend_mm_mem_dummy_compact, zend_mm_mem_malloc_alloc,
-zend_mm_mem_malloc_realloc, zend_mm_mem_malloc_free}</code></pre>
-<p>zend_mm_segment is a memory segment (the base unit ZendMM will use when allocating from the OS). It's size may be changed using the <strong>ZEND_MM_SEG_SIZE</strong> env. The allocator will use this size to allocate a buffer, place a zend_mm_segment as head and return the leaving buffer which will be itself cut into blocs linked with each other.</p>
+struct _zend_mm_storage {
+    const zend_mm_mem_handlers *handlers;
+    void *data;
+};
+
+#define ZEND_MM_MEM_MALLOC_DSC {"malloc", zend_mm_mem_dummy_init, zend_mm_mem_dummy_dtor, zend_mm_mem_dummy_compact, zend_mm_mem_malloc_alloc, zend_mm_mem_malloc_realloc, zend_mm_mem_malloc_free}</code></pre>
+<p><em>zend_mm_segment</em> is a memory segment (the base unit ZendMM will use when allocating from the OS). It's size may be changed using the <strong>ZEND_MM_SEG_SIZE</strong> env. The allocator will use this size to allocate a buffer, place a <em>zend_mm_segment</em> as head and return the leaving buffer which will be itself cut into blocs linked with each other.</p>
 <pre><code>typedef struct _zend_mm_segment {
-    size_t    size;
+    size_t size;
     struct _zend_mm_segment *next_segment;
 } zend_mm_segment;
 
@@ -5082,7 +5090,7 @@ typedef struct _zend_mm_free_block {
     struct _zend_mm_free_block **parent;
     struct _zend_mm_free_block *child[2];
 } zend_mm_free_block;</code></pre>
-<p>zend_mm_heap is the shared heap. It's shared as a global variable into PHP, but you will usually never use it directly (except if you design extensions that plays with PHP memory in any way).</p>
+<p><em>zend_mm_heap</em> is the shared heap. It's shared as a global variable into PHP, but you will usually never use it directly (except if you design extensions that plays with PHP memory in any way).</p>
 <pre><code>struct _zend_mm_heap {
     int                 use_zend_alloc;
     void               *(*_malloc)(size_t);
@@ -5121,7 +5129,7 @@ typedef struct _zend_mm_free_block {
 };</code></pre>
 <p>As you can see, compiling PHP with the debug flag enables many things into those low level structures.</p>
 <h3 id="published-functions">Published functions<a href="#published-functions" class="anchor">#</a></h3>
-<p>ZendMM is mainly used when designing PHP internals (extensions or core development). For this goal, it publishes some functions the developer must use instead of traditionnal libc functions.
+<p>ZendMM API is mainly used when designing PHP internals (extensions or core development), for every request-bound allocation. For this goal, it publishes some functions the developer must use instead of traditionnal libc functions.
 Those published functions are very intuitive and easy to use, let's have a look:</p>
 <pre><code>void *emalloc(size_t size);
 void *pemalloc(size_t size, char persistent)
@@ -5134,7 +5142,7 @@ void *pestrdup(void *ptr, char persistent)    void *strdup(void *ptr)
 void efree(void *ptr)
 void pefree(void *ptr, char persistent)    void free(void *ptr)</code></pre>
 <p>As you can see, they share the same API as malloc/free/strdup etc... from libc. A quick word on "p" functions. "p" stands for "persitent", this means that the allocation will persist through requests.
-In reality, those "persitent" functions directly proxy to the bottom layer (malloc/free), one should use them for every allocation that is not request bound, meaning that ZendMM won't warn you about possible leaks for them, simply because they can't really leak and will anyway be cleaned when PHP shuts down.</p>
+In reality, those "persitent" functions directly proxy to the bottom layer (malloc/free), one should use them for every allocation that is not request bound, meaning that ZendMM won't warn you about possible leaks for them, simply because they can't really leak from request to request and will anyway be cleaned when PHP shuts down.</p>
 <h3 id="from-php-land">From PHP land<a href="#from-php-land" class="anchor">#</a></h3>
 <p>PHP allows you, as a PHP developer, to interact with it. Functions <code>memory_get_usage()</code> and <code>memory_get_peak_usage()</code> are published, as well as the ini setting <em>memory_limit</em>.
 As most of dynamic allocation request from PHP go through the ZendMM layer, it is very easy for it to count the number of bytes asked so far, and bail out in case of reaching a limit : the <em>memory_limit</em>.</p>
@@ -5166,9 +5174,8 @@ $&gt; php /tmp/mem.php
 11264.00 Kb</code></pre>
 <p><code>memory_get_peak_usage()</code> returns the peak ZendMM recorded in its life.</p>
 <blockquote>
-<p>Important : Nothing forces the C developers to use ZendMM. Anyone developing an extension (for example) could absolutely not use ZendMM and rely directly on malloc/free, thus allocating dynamic memory that will not be seen by ZendMM and <code>memory_get_usage()</code>, <em>memory_limit</em> etc... Here, you may use your OS to monitor this. Obviously, C developers know that and heavily rely on ZendMM, but still.
-Also, note that PHP's source code itself uses ZendMM, but sometimes, somewhere, no. Some parts of code use persistent allocs or directly malloc/free.</p>
-<p>That's why <code>memory_get_usage()</code> give an average information, often accurate, but not 100% accurate on a byte-basis. Use your OS for that.</p>
+<p>Important : Nothing forces the C developers to use ZendMM. Anyone developing an extension (for example) could absolutely not use ZendMM and rely directly on malloc/free, thus allocating dynamic memory that will not be seen by ZendMM and <code>memory_get_usage()</code>, <em>memory_limit</em> etc... Here, you may use your OS to monitor this. Obviously, C developers know that and heavily rely on ZendMM, but still.</p>
+<p><code>memory_get_usage()</code> give an average information, often accurate, but not 100% accurate on a byte-basis. Use your OS for that.</p>
 </blockquote>
 <h3 id="tuning">Tuning<a href="#tuning" class="anchor">#</a></h3>
 <h4 id="zend-mm-seg-size-sizing-zendmm-heap-allocations">ZEND_MM_SEG_SIZE, sizing ZendMM heap allocations<a href="#zend-mm-seg-size-sizing-zendmm-heap-allocations" class="anchor">#</a></h4>
@@ -5228,24 +5235,22 @@ Heap segmentation : 325 segments of 2048 bytes (650 Kb used)
 
 Memory usage 4994.70 Ko
 Heap segmentation : 2687 segments of 2048 bytes (5374 Kb used)</code></pre>
-<p>Yeah, we raise from 630Kb to about 5Mb just by making PHP parse the Zend/Date.php, which contains a huge class. We even did not make any use of this class, just parsed it.
-Remember that in PHP objects are really tiny and very well designed to be thrifty, but all the weigth is passed back to the class. In PHP, a class is something consuming memory, a fortiori a big class.</p>
+<p>Yeah, we raise from 630Kb to about 5Mb just by making PHP parse the <code>Zend/Date.php</code>, which contains a huge class. We even did not make any use of this class, just parsed it.
+Remember that in PHP objects are really tiny and very well designed to be thrifty, but all the weight is passed back to the class. In PHP, a class is something consuming memory, a fortiori a big class. You may read more about classes, objects and memory, <a href="http://jpauli.github.io/2015/03/24/zoom-on-php-objects.html">in the dedicated article</a>.</p>
 <p>To well tune segment size, you must know the average PHP memory consumption of your app, so that with well sized segments, the allocator won't create and free too many segments too often.
 A bad thing for performance is having an application oscillate around a segment, forcing the ZendMM to call the underlying allocator.</p>
 <p><img alt="memory_get_usage" src="../../../img/php-memory/mm.png"><img alt="memory_get_usage" src="../../../img/php-memory/mm2.png"></p>
 <h4 id="zend-mm-mem-type-choosing-the-underlying-allocator">ZEND_MM_MEM_TYPE : choosing the underlying allocator<a href="#zend-mm-mem-type-choosing-the-underlying-allocator" class="anchor">#</a></h4>
 <p>As we've seen so far, the underlying allocator ZendMM will rely on is configurable. By default, it is set to 'malloc' ('win32' under Windows).</p>
-<pre><code>#define ZEND_MM_MEM_WIN32_DSC {"win32", zend_mm_mem_win32_init, zend_mm_mem_win32_dtor, zend_mm_mem_win32_compact, zend_mm_mem_win32_alloc,
- zend_mm_mem_win32_realloc, zend_mm_mem_win32_free}
+<pre><code>#define ZEND_MM_MEM_WIN32_DSC {"win32", zend_mm_mem_win32_init, zend_mm_mem_win32_dtor, zend_mm_mem_win32_compact, zend_mm_mem_win32_alloc, zend_mm_mem_win32_realloc, zend_mm_mem_win32_free}
 
-#define ZEND_MM_MEM_MALLOC_DSC {"malloc", zend_mm_mem_dummy_init, zend_mm_mem_dummy_dtor, zend_mm_mem_dummy_compact, zend_mm_mem_malloc_alloc,
- zend_mm_mem_malloc_realloc, zend_mm_mem_malloc_free}</code></pre>
-<p>You can choose also mmap_anon or mmap_zero. mmap_anon will create a new anonymous memory mapping in your process mapping table :</p>
+#define ZEND_MM_MEM_MALLOC_DSC {"malloc", zend_mm_mem_dummy_init, zend_mm_mem_dummy_dtor, zend_mm_mem_dummy_compact, zend_mm_mem_malloc_alloc, zend_mm_mem_malloc_realloc, zend_mm_mem_malloc_free}</code></pre>
+<p>You can choose also <em>mmap_anon</em> or <em>mmap_zero</em>. <em>mmap_anon</em> will create a new anonymous memory mapping in your process mapping table :</p>
 <pre><code>zend_mm_segment *ret = (zend_mm_segment*)mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);</code></pre>
-<p>mmap_zero is the same, but using /dev/zero descriptor (usually BSD based Unixes) :</p>
+<p><em>mmap_zero</em> is the same, but using <em>/dev/zero</em> descriptor (usually BSD based Unixes) :</p>
 <pre><code>zend_mm_dev_zero_fd = open("/dev/zero", O_RDWR, S_IRUSR | S_IWUSR);
 zend_mm_segment *ret = (zend_mm_segment*)mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, zend_mm_dev_zero_fd, 0);</code></pre>
-<p>Using mmap_anon or mmap_zero is better if you don't want to suffer from your libc's malloc overhead :</p>
+<p>Using <em>mmap_anon</em> or <em>mmap_zero</em> is better if you don't want to suffer from your libc's malloc overhead :</p>
 <pre><code>ini_set('memory_limit', -1);
 
 function heap() {
@@ -5266,16 +5271,19 @@ Original heap status: VmData:         4504 kB
 I'm now eating heap memory: VmData:    152232 kB
 Memory should now have been freed: VmData:    143780 kB</code></pre>
 <p>mmm, seems like there is something strange. Seems like memory is heavily leaking because it does not reach back its original value when I destroy the very big array that did ask for mush memory from the heap. What's happening ?</p>
-<p>Let's launch this script again, but now choosing mmap_anon as underlying allocator for ZendMM :</p>
+<p>Let's launch this script again, but now choosing <em>mmap_anon</em> as underlying allocator for ZendMM :</p>
 <pre><code>&gt;ZEND_MM_MEM_TYPE=mmap_anon php leak.php 
 
 Original heap status: VmData:         4404 kB
 I'm now eating heap memory: VmData:      152116 kB
 Memory should now have been freed: VmData:      4916 kB</code></pre>
-<p>Aha, seems much better. In this particular case, we've been hit by malloc implementation. When we freed the memory, ZendMM did call <code>free()</code>, but <code>free()</code> itself did not free the memory back to the OS, but prefered keeping the blocks in a heat area to serve them back later. This is good if you don't use an overlay, like ZendMM. But using ZendMM, which itself implements a heat zone an reusage of pointers, it is silly to suffer from libc's malloc implementation details (which may vary a lot depending on how <code>malloc()</code> has been compiled on your system, you should read your system manual to know about this).</p>
-<p>So using mmap_anon, if you know what this is, ZendMM will call <code>munmap()</code>, which is a Kernel service (system call) which will mark the physical pages as freed, thus unpaging them from your process memory image : your memory consumption will then drop.</p>
+<p>Aha, seems much better. In this particular case, we've been hit by malloc implementation details. When we freed the memory, ZendMM did call <code>free()</code>, but <code>free()</code> itself did not free the memory back to the OS, but prefered keeping the blocks in a heat area to serve them back later. This is good if you don't use an overlay, like ZendMM. But using ZendMM, which itself implements a heat zone an reusage of pointers, it is silly to suffer from libc's malloc implementation details (which may vary a lot depending on how <code>malloc()</code> has been compiled on your system, you should read your system manual to know about this).</p>
+<p>So using <em>mmap_anon</em>, if you know what this is, ZendMM will call <code>munmap()</code>, which is a Kernel service (system call) which will mark the physical pages as freed, thus unpaging them from your process memory image : your memory consumption will then drop.</p>
+<blockquote>
+<p>It is better to not use "malloc" as underlying allocator. If you use "malloc", you'll end having two heap managers (ZendMM and malloc) on top of each other, and you'll then suffer from the bottom (malloc) management operations, such as compaction algorithm firing, or blocks not freed when requested.</p>
+</blockquote>
 <h2 id="a-quick-word-on-the-garbage-collector">A quick word on the Garbage Collector<a href="#a-quick-word-on-the-garbage-collector" class="anchor">#</a></h2>
-<p>Just to be clear, because we tend to read so many bullshit on the Web about PHP, by people just telling things that are not true... Anyway, let me clarify. Zend Memory Manager has nothing to share with ZendGC. ZendGC, appeared in PHP 5.3, is about clearing circular references in PHP variables and that's absolutely all it does. It then acts on top of ZendMM, for PHP variables containing themselves (circular references). PHP has always freed back the memory when it has not used it anymore, and this is ZendMM role</p>
+<p>Let me clarify. Zend Memory Manager has nothing to share with ZendGC. ZendGC, appeared in PHP 5.3, is about clearing circular references in PHP variables and that's absolutely all it does. It then acts far on top of ZendMM, for PHP variables containing themselves (circular references). PHP has always freed back the request-bound memory when it has not used it anymore (request finished), and this is ZendMM role</p>
 <p><img alt="ZendGC" src="../../../img/php-memory/zendgc.png"></p>
 <h2 id="deeper-example">Deeper example<a href="#deeper-example" class="anchor">#</a></h2>
 <p>We're gonna trace every dynamic memory allocation from a PHP process, just to have an idea of how PHP uses the heap memory. We're gonna use Valgrind-Massif for that.</p>
@@ -5338,9 +5346,9 @@ If you have another OS or architecture, the numbers will vary. Also, if you acti
 |               
 -&gt;01.36% (18,191B) in 20 places, all below massif's threshold (01.00%)</code></pre>
 <p>At timeslot 268, we can notice that 1.3Mb have been allocated, of which <code>zend_interned_string_init()</code> uses 1Mb, and <code>_zend_mm_alloc_int()</code> uses 256Kb.
-<code>zend_interned_string_init()</code> is the interned string buffer used for string interning. By default, <a href="http://lxr.php.net/xref/PHP_5_5/Zend/zend_string.c#43">it is 1Mb size</a> and can only be changed
-at PHP compilation.
-<code>_zend_mm_alloc_int()</code> allocated 256Kb, yes, this is our underlying allocator call, to allocate one segment of memory, the very first one (default is 256Kb), PHP is actually starting and we are very soon in that process at timeslot 268.
+<code>zend_interned_string_init()</code> is the interned string buffer used for string interning. By default, it is 1Mb size and can only be changed
+at PHP compilation. If you are interested in the way PHP manages strings internally, <a href="http://jpauli.github.io/2015/09/18/php-string-management.html">there is a dedicated article about that</a>.</p>
+<p><code>_zend_mm_alloc_int()</code> allocated 256Kb, yes, this is our underlying allocator call, to allocate one segment of memory, the very first one (default is 256Kb), PHP is actually starting and we are very soon in that process at timeslot 268.
 Let's keep going :</p>
 <pre><code>--------------------------------------------------------------------------------
   n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
@@ -5392,7 +5400,7 @@ Let's keep going :</p>
 <p>Interesting. At timeslot 307, the snapshot starts showing the famous garbage collector impact. The circular garbage collector, to be able to run and do its job, needs not less than 320Kb of memory, which is not trivial.  <code>php_module_startup()</code> is the call to start every PHP extensions, which will start registering some classes, some functions etc... 48Kb so far</p>
 <p>Etc... We could detail all the snapshot if you wish to have a full night reading this article ;-)</p>
 <h2 id="end">End<a href="#end" class="anchor">#</a></h2>
-<p>Zend Memory Manager (ZendMM) is a layer sitting on top of every (ideally) PHP heap allocation request. It has been designed to improve PHP performances, as PHP started becoming more and more complex and heap dependent. As you know now, you must compile a debug build of PHP to activate all the interesting parts of ZendMM.</p>
+<p>Zend Memory Manager (ZendMM) is a layer sitting on top of every PHP request-related heap allocation. It has been designed to improve PHP performances, as PHP started becoming more and more complex and heap dependent. As you know now, you must compile a debug build of PHP to activate all the interesting parts of ZendMM. ZendMM roles are multiple, but the main ones are to control and free memory blocks between each web request PHP has to treat, effectively implementing a heap manager over the default system one (malloc).</p>
 <p>In any case, PHP is build with ZendMM, so you benefit from it, from its very complex lines of codes, without having noticing it yet. Am I wrong ? Memory allocation in a programm can easilly turn to nightmare when you want to take in consideration all the parts : leaks, performance, thread safety, etc...</p>
 <p>You can read many articles about allocators (low level ones) on the web, starting by <a href="http://locklessinc.com/benchmarks_allocator.shtml">Benchmarks of the Lockless Memory Allocator</a> or <a href="https://www.facebook.com/notes/facebook-engineering/scalable-memory-allocation-using-jemalloc/480222803919">Scalable memory allocation using jemalloc</a>.</p>]]></content>
     </entry>

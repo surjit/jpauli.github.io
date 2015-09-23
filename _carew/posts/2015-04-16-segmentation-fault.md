@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  Segmentation Fault
+title:  Segmentation Fault (Computer memory layout)
 ---
 
 ## That word : segmentation fault
@@ -10,24 +10,30 @@ A quick word on what's this blog post is about.
 When I make mistakes in my code, it very often generates a "segmentation fault" message, often shorten as "segfault". And then, my collegues and managers come to me exclaming "ha!, we got a segfault for you (to fix)".
 "All right, that's mine" is often my answer. But, do you really know what a "segmentation fault" is ?.
 
+In addition to that, I could plan in the future to write technical in-depth PHP-memory-related articles, I need my readers to have such knowledge to understand some concepts further explained.
+
 To answer such a question, we'll have to rewind time back in 1960's. I'm going to explain you how a computer works, more accurately how memory is accessed into a modern computer and you'll then understand where this strange message comes from.
 
-What you'll read here is a summary of the basics of computer architecture design, I won't go too far if it's not necessary, and will use well known wordings so that anyone working with a computer everyday can understand such crucial concepts about how your machine works.
+What you'll read here is a summary of the basics of computer architecture design, I won't go too far if it's not necessary, and will use well known wordings so that anyone working with a computer everyday can understand such crucial concepts about how the machine works.
+
+Many books exist about computer architecture, if you want to go further into such a subject, I suggest you get some of them and start reading. Also, don't forget to grab one OS Kernel source code and study it, such as the Linux Kernel, or any else.
+
+> We won't rewrite the history here. This post is detailed somehow, but not a full computer architecture class ; some info are missing or (sometimes extremely) simplified.
 
 ## Some computer science history
 
 Back in the time, computer were enormous machines, weighting tons, inside what you could find one CPU with something like 16Kb of memory (RAM). We won't go back in time further, that is before the CPU chips era.
 
-So in this period, a computer cost something like $150.000, and could execute exactly one task at a time : it could run one process at a given time.
+So in this period, a computer cost something like $150,000 and could execute exactly one task at a time : it could run one process at a given time.
 If we would draw a schema of the memory architecure then, we would draw it like this :
 
 ![early_systems](../../../img/segfault/early_systems.png)
 
 As you can see, the memory is 16Kb wide, and into it you can find two things :
-*	The Operating System memory area, which is 4Kb wide
-*	The actually running process memory area, which is then 12Kb wide
+*	The Operating System memory area, which is 4Kb wide (f.e)
+*	The actually running process memory area, which is then 12Kb wide (f.e)
 
-This blog post is not a course about Operating Systems designs, even if it looks like it. The operating system role was, at this time, to simply manage the hardware using CPU interruptions. So the OS needs memory for itself, to copy the data from a device f.e and treat them. Just to display something on the screen needs some main memory, back in this time where video chipsets bundled zero to few kilobytes of memory.
+The operating system role was, at this time, to simply manage the hardware using CPU interruptions. So the OS needs memory for itself, to copy the data from a device f.e and treat them (PIO mode). Just to display something on the screen needs some main memory, back in this time where video chipsets bundled zero to few kilobytes of memory.
 
 And then, our solo program was running just next to the OS memory, achieving its tasks.
 
@@ -35,20 +41,20 @@ We are fine with that, right ?
 
 ## Sharing the machine
 
-But one big problem of such a model is that the machine (costing $150.000) could only perform one task at a time, and this task was terribly long to run : entire days, to treat few Kb of data.
+But one big problem of such a model is that the machine (costing $150,000) could only perform one task at a time, and this task was terribly long to run : entire days, to treat few Kb of data.
 
 At this huge price, it was clearly not possible to buy several machines to perform several treatments at the same time, so people was trying to share the machine resources.
 The time of *multitasking* was born. Keep in mind that it is way too early to talk about multi-CPU machines. How can we make one machine, with one CPU, actually achieve several different tasks ?
 
 The answer was *scheduling* : when one process was busy waiting for an I/O to come through an interrupt, the CPU would then run another process during this time. We won't talk about scheduling at all (a too wide subject), but about memory.
 
-If a machine can run several process tasks one after the other, then that means that memory would then look like this :
+If a machine can run several process tasks one after the other, then that means that memory would then look something like this (f.e) :
 
 ![multitasking_memory](../../../img/segfault/multitasking_memory.png)
 
-Both task A and task B memory is stored into the RAM, because copying it back and forth to a disk is a way too heavy process : the data have to stay into RAM, permanently, as their respective tasks still run.
+Both task A and task B memory are stored into the RAM, because copying it back and forth to a disk is a way too heavy process : the data have to stay into RAM, permanently, as their respective tasks still run.
 
-Cool. But wait, there is a problem here.
+Cool : the scheduler gives some CPU time to A, then B, etc... each accessing its memory area. But wait, there is a problem here.
 
 When one programmer would write the task B's code, it then had to know the memory address bounds. Task B for example, would start from memory 10Kb to memory 12Kb, so every address in the program needs to be hardcoded exactly into those bounds, and if the machine could then run 3 tasks, then the address space would be divided in even more areas, and the memory bounds of task B would then move : B's programmer had to rewrite his program, to use less memory this time, and to rewrite every memory pointer address.
 
@@ -57,28 +63,28 @@ And last : what if task B does a mistake, and overwrite the OS memory ? From 0Kb
 
 ## Address Space
 
-So, to be able to run several tasks residing in memory, the OS must help. One way of helping, is by creating what's called an address space.
-An address space is an abstraction of the memory that the OS will give to a process, and this concept is absolutely fundamental, as nowadays, every piece of computer you meet in your life, is designed like that. There exists no other model (in the civilian society, army may retain secrets). You use your personnal computer, you keep typing on your mobile phone's screen, you start your TV, you play with your video game console, and you put your credit card in a cash machine and you ridiculously talk to your glasses or your watch. **Every, every system nowadays, just works like this internally**.
+So, to be able to run several tasks residing in memory, the OS and the hardware must help. One way of helping, is by creating what's called an address space.
+An address space is an abstraction of the memory that the OS will give to a process, and this concept is absolutely fundamental, as nowadays, every piece of computer you meet in your life, is designed like that. There exists no other model (in the civilian society, army may retain secrets). You use your personnal computer, you keep typing on your mobile phone's screen, you start your TV, you play with your video game console, and you put your credit card in a cash machine and you ridiculously talk to your glasses or your watch.
+
+> Every system nowadays is organized with a code-stack-heap memory layout like this, in its deepnesses.
 
 The address space contains everything a task (a process) will need to run :
 *	Its code : its machine instructions the CPU will have to run
 *	Its data : the data the machine instructions will play with
-*	Other things we won't detail here
 
-The address space is divided like this, in every computer system running on the Earth today (99% of them, right !) :
+The address space is divided like this :
 
 ![process_address_space](../../../img/segfault/process_address_space.png)
 
-*	The stack is the memory area where the program keeps informations about called functions, their arguments and every local variable into the functions.
-*	The heap is the memory area where the program does whatever it wants to, the programmer is absolutely free to do anything he wants in such area.
-*	The code is the memory area where the CPU instructions of the compiled program will be stored. Those instructions are generated by a compiler, but can be hand written.
-*	This is a little bit more complex than that in reality, as I said earlier, my goal is not to rewrite the global theory of computer architecture ;-)
+*	The _stack_ is the memory area where the program keeps informations about called functions, their arguments and every local variable into the functions.
+*	The _heap_ is the memory area where the program does whatever it wants to, the programmer is absolutely free to do anything he wants in such area.
+*	The _code_ is the memory area where the CPU instructions of the compiled program will be stored. Those instructions are generated by a compiler, but can be hand written. Note that the code segment is usually divided itself in three parts (Text, Data and BSS), but we don't need to go that far in our analyze.
 
-*	The code is fixed size : it is born from a compiler, will weigh (in our example picture) 1Kb, and that's it.
-*	The stack however is a resizable zone, as the program runs. When functions get called, the stack expands, when function calls are terminated : the stack shrinks back.
-*	The heap as well is a resizable zone, as the programmer asks memory from the heap (mmaloc()), this latter will expand, and when the programmer frees back memory (free()), the heap narrows.
+*	The _code_ is fixed size : it is born from a compiler, will weight (in our example picture) 1Kb, and that's it.
+*	The _stack_ however is a resizable zone, as the program runs. When functions get called, the stack expands, when function calls are terminated : the stack expands backwards.
+*	The _heap_ as well is a resizable zone, as the programmer asks memory from the heap (`malloc()`), this latter will expand forwards, and when the programmer frees back memory (`free()`), the heap narrows.
 
-As the stack and the heap are expandable zones, they've been located at opposite locations into the whole address space : the stack will grow upwards, and the heap downwards, they are fully free to grow, each one in the direction of the other. What the OS will have to check is simply that the zones don't overlap at some time, using limits mainly.
+As the stack and the heap are expandable zones, they've been located at opposite locations into the whole address space : the stack will grow backwards, and the heap forwards. They are both fully free to grow, each one in the direction of the other. What the OS will have to check is simply that the zones don't overlap at some time, using limits mainly.
 
 ## Memory virtualization
 
@@ -99,8 +105,9 @@ In task A memory, memory index for example 11K, is just a fake address. This is 
 
 The OS will virtualize memory, and will guarantee every task that it can't access memory is doesn't own : the virtualization of memory has allowed process isolations : task A can't access task B's memory anymore, nether can it access the OS own memory. And everything is totally transparent to the user-level tasks, thanks to tons of complex OS Kernel code.
 
-Thus, the OS will have to come on scene for every process memory demand. It will then have to be very efficient, not to slow down too much the different programs running, and to achieve this, it will get helped by the hardware : mainly by the CPU and some electronical device around it, like the MMU (Memory Management Unit).
+Thus, the OS will have to come on scene for every process memory demand. It will then have to be very efficient - not to slow down too much the different programs running - and to achieve this it will get helped by the hardware : mainly by the CPU and some electronical device around it, like the MMU (Memory Management Unit).
 MMU appeared then in early 70's, with IBM, as separated chips. They are now embed directly into our CPU chips, and are mandatory for any modern OS to run.
+In fact, the OS won't have tons of things to do, it will heavilly rely on some hardware specific behaviors that will ease a lot every memory access.
 
 Here is a little C program showing some memory addresses :
 
@@ -148,26 +155,28 @@ And here is its physical image :
 ![memory_virt](../../../img/segfault/memory_virt.png)
 
 The OS chose to store it into physical memory at address range 4K to 20K, thus the base address is set to 4K and the bound/limit is set to 4+16 = 20K.
-When this process will try to load, for example, its virtual address 2K (something into its heap), the OS will fire-in and add to this address the base for this process. Thus, this process memory access will lead to the physical location 2K + 4K = 6K.
+When this process is scheduled (given some CPU time), the OS reads back both the *bound* and *limit* values from the PCB, and copies them into specific CPU registers.
+Then the process will run and will try to load for example its virtual address 2K (something into its heap). The CPU will then add to this address the base it has received from the OS. Thus, this process memory access will lead to the physical location 2K + 4K = 6K.
 
 **physical address = virtual address + base**
 
-If the resulting physical address (6K) is out of the bounds ( -4K|20K- ), that means that the process tried to access invalid memory that it doesnt own : the OS will then generate a signal to that task : a SIGSEGV : a Segmentation Fault, which by default (this can be changed), will terminate the task : it has crashed about invalid memory access.
+If the resulting physical address (6K) is out of the bounds ( -4K|20K- ), that means that the process tried to access invalid memory that it doesnt own : the CPU will then generate an exception, and as the OS did set up an exception handler for that, the OS will be triggered back by the CPU and knows a memory exception has just happened onto the CPU. Its default behavior is then to issue a signal to the faulty processk : a SIGSEGV : a Segmentation Fault, which by default (this can be changed) will terminate the task : the process has crashed about invalid memory access.
+
 
 ### Memory Relocation
 
 Even better, if task A is unscheduled, that means it is taken out from the CPU because the scheduler asked to run another task now (say task B), when running task B, the OS is free to relocate the entire physical address space of task A.
 The OS is given the CPU often when a user task runs. When this latter issues a system call, the control of the CPU is given back to the OS, and before honnoring the system call, the OS is free to do whatever it wants about memory management, like relocating an entire process space into a different physical memory slot.
 
-For this, it is relatively simple : the OS moves the 16K wide area into another 16K wide free space, and simply updates the bound variable of the task A. When this latter will be resumed and given back the CPU, the address translation process still works, but it doesn't lead to the same physical address as before.
+For this, it is relatively simple : the OS moves the 16K wide area into another 16K wide free space, and simply updates the base and bound variables of the task A. When this latter will be resumed and given back the CPU, the address translation process still works, but it doesn't lead to the same physical address as before.
 
-Task A has noticed nothing, for task A, its address space still starts from 0K, up to 16K. The OS totally takes control over every memory access for task A, and has thrown a complete illusion to it. The programmer behind task A manipulates its allowed virtual addresses, from 0 to 16, and the OS behind will take care of positionning everything into physical memory.
+Task A has noticed nothing, from its point of view, its own address space still starts from 0K up to 16K. The OS and the hardware MMU take full control over every memory access for task A, and they have thrown a complete illusion to it. The programmer behind task A manipulates its allowed virtual addresses, from 0 to 16, and the MMU behind will take care of positionning everything into physical memory.
 
 The memory image, after the move, would then look like this :
 
 ![process_relocation](../../../img/segfault/process_relocation.png)
 
-It has become very easy to program memory now : a programmer no longer has to wonder where its program will be located in RAM, if another task will run next to his own, and what memory addresses to manipulate : it is taken by hand by the OS.
+It has become very easy to program memory now : a programmer no longer has to wonder where its program will be located in RAM, if another task will run next to his own, and what memory addresses to manipulate : it is taken by hand by the OS, helped with very performant and clever hardware : the Memory Management Unit (MMU).
 
 ## Memory segmentation
 
@@ -175,13 +184,13 @@ Notice the appearance of the "segmentation" word : we are close to the explainat
 
 In the last chapter, we explained about memory translation and rellocation, but the model we used has drawbacks :
 
-*	We assumed every virtual address space is fixed 16Kb wide. This is obviously not the case in reality
-*	The OS has to maintain a list of physical memory free slots (16Kb wide), to be able to find a place for any new process asking to start, or for relocating a started process, how to do this efficiently to not slow down all the system ?
+*	We assumed every virtual address space is fixed 16Kb wide. This is obviously not the case in reality.
+*	The OS has to maintain a list of physical memory free slots (16Kb wide), to be able to find a place for any new process asking to start, or to relocating a started process. How to do this efficiently to not slow down all the system ?
 *	As you can see, every process memory image is 16Kb wide, even if the process doesn't use its whole address space, which is very likely. This model clearly wastes a lot of memory, as if a process really consumes say 1KB of memory, its memory image in physical RAM holds 16Kb. Such a waste is called *internal fragmentation* : the memory is reserved, but never used.
 
 To address some of those problems, we're gonna dive into more complex memory organization from the OS : segmentation.
 
-Segmentation is easy to understand : we widen the concept of "base and bounds" to the three logicial segments of memory : the heap, the code and the stack, of each process.
+Segmentation is easy to understand : we widen the concept of "base and bounds" to the three logicial segments of memory : the heap, the code and the stack, of each process - instead of just cosiderating the memory image as one unique entity.
 
 With such a concept, the wasted memory between the stack and the heap, is no longer wasted. Like this :
 
@@ -189,13 +198,13 @@ With such a concept, the wasted memory between the stack and the heap, is no lon
 
 Now it is easy to notice that the free space in virtual memory for task A is no longer allocated into physical memory, the memory usage has become much more efficient.
 
-The only difference now, is that for any task, the OS doesn't have to remember one couple base/bounds, but threee of them : one couple for each segment type. The MMU takes care of the translations, just like before.
+The only difference now is that for any task, the OS doesn't have to remember one couple base/bounds, but three of them : one couple for each segment type. The MMU takes care of the translations, just like before, and now supports as well 3 *base* values and 3 *bounds*.
 
 For example, here, the task A's heap has a base of 126K and a bound of 2K. When the task A asks to access its virtual address 3Kb, into its heap; the physical address is 3Kb - 2Kb (start of the heap) = 1Kb + 126K (offset) = 127K. 127K is before 128K : this is a valid memory address that can be honored.
 
 ### Segment sharing
 
-Segmenting the physical memory not only solves the problem of free virtual memory not eating any more physical memory, but it also allows to share physical segments through different processes virtual address space.
+Segmenting the physical memory not only solves the problem of free virtual memory not eating any more physical memory, but it also allows to share physical segments through different processe virtual address spaces.
 
 If you run twice the same task, task A for example, the code segment is exactly the same : both tasks run the same CPU instructions. While both tasks will use their own stack and heap, as they treat their own set of data, it is silly to duplicate the code segment of both in memory. The OS can now share it, and save even more memory. Something like this :
 
@@ -209,7 +218,7 @@ To achieve this, the OS has to implement one more feature : segment protection b
 The OS will, for each physical segment it creates, register the bound/limit for the MMU translation unit to work correctly, but it will also register a permission flag.
 
 As the code is not modifiable, the code segments are all created with the RX permission flag. The process can load those memory areas for eXecution, but any process trying to Write into such memory area, will be shout at by the OS.
-The other two segments : heap and stack are RW, the processes can read and write from their own stack/heap , but they can't execute code from it (this prevents program security flaws, where a bad user may want to corrupt the heap or the stack to inject code to run, mainly to be given root access : this is not possible as the heap and stack segments often are not eXecutable. Note that this has not always been the case in history).
+The other two segments : heap and stack are RW, the processes can read and write from their own stack/heap , but they can't execute code from it (this prevents program security flaws, where a bad user may want to corrupt the heap or the stack to inject code to run, mainly to be given root access : this is not possible as the heap and stack segments often are not eXecutable. Note that this has not always been the case in history and requires some more hardware support to work efficiently, this is called the "NX bit" under Intel CPU).
 
 Memory segments permissions are changeable at runtime : the task may call for [mprotect()](http://man7.org/linux/man-pages/man2/mprotect.2.html) from the OS.
 
@@ -232,7 +241,7 @@ Like we can see, every shared object (.so) is mapped into the address space as s
 
 This is one enormous advantage of Shared Objects under Linux (and Unixes) : memory savings.
 
-It is possible also, to create a shared area, leading to a shared physical memory segment, by using the [mmap()](http://man7.org/linux/man-pages/man2/mmap.2.html) system call. A 's' letter will then appear next to the area, standing for "shared" .
+It is possible also to create a shared area leading to a shared physical memory segment, by using the [mmap()](http://man7.org/linux/man-pages/man2/mmap.2.html) system call. A 's' letter will then appear next to the area, standing for "shared".
 
 ### Segmentation limits
 
@@ -254,7 +263,7 @@ The OS can try to compact the memory, by merging all the free areas into one big
 
 But such compaction algorithm is really heavy for CPU, and in the meantime, no user process may be given the CPU : the OS is fully working reorganizing its physical memory, thus the system becomes unusable.
 
-Segments show real weaknesses, thus there is a need to enhance their capabilities and fix those flaws : this is done by another even more concept : memory paging; and we'll stop here for our article ;-)
+Memory segmentation addresses lots of problems about memory management and multitasking, but they also show real weaknesses. Thus, there is a need to enhance the segmentation capabilities and fix those flaws : this is done by another concept : *memory paging*; but we'll stop here for our article.
 
 ## Conclusion
 

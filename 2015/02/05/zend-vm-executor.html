@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>Getting into the Zend Execution engine</title>
+    <title>Getting into the Zend Execution engine (PHP 5)</title>
 
     <meta name="description" content="">
     <meta name="author" content="Julien Pauli">
@@ -41,7 +41,7 @@
         
                   <div class="content">
                                           <h1>
-                  Getting into the Zend Execution engine</h1>
+                  Getting into the Zend Execution engine (PHP 5)</h1>
                           
               <article>
     <p class="text-muted">
@@ -371,7 +371,7 @@ op1 and op2 type, just to run a different fetch/read code, that would not be ver
 <p>Now, here is the magical stuff : the file this code is written in, <a href="http://lxr.php.net/xref/PHP_5_6/Zend/zend_vm_def.h">zend_vm_def.h</a> , is just a template, that is passed into a processor, which will produce some C valid code (this time) for every handler, <strong>for every combinaison of every operand type</strong>.</p>
 <p>Maths ? 5 different types for op1 multiplied by 5 different types for op2 : ZEND_ADD will be declined as 25 different sepcialized handler functions, and those ones will be written into a file that will itself be compiled as part of the PHP source code.</p>
 <p>This file is named <a href="http://lxr.php.net/xref/PHP_5_6/Zend/zend_vm_execute.h">zend_vm_execute.h</a>, and be carefull as you may have guessed : <strong>it is horribly huge</strong>.</p>
-<p>Maths ? We support 167 OPCodes as of PHP5.6 , imagine all those 167 OPCode handlers accept the full 5 possible combinaisons for both their op1 and op2 ...
+<p>Maths ? We support 167 OPCodes as of PHP 5.6 , imagine all those 167 OPCode handlers accept the full 5 possible combinaisons for both their op1 and op2 ...
 That gives 4175 C functions to store into this file.</p>
 <p>In fact, every OPCode handler will not accept the 5 different possible types of operands, and will lead to less specialized declinations.
 For example :</p>

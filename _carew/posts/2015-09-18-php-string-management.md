@@ -10,19 +10,19 @@ You may also use libraries such as the [well known bstring](http://bstring.sourc
 
 In C, strings are simple NULL-terminated char arrays, like you know. However, when designing a scripting language such as PHP, the need to manage those strings arises. In management, we think about classical operations, such as concatenation, extension or truncation ; and eventually more advanced concepts, such as special allocation mechanisms, string interning or string compression. Libc answers the easy operations (concat, search, truncate), but complex operations are to be developped by yourself.
 
-Let's see together how strings are implemented into PHP 5, and the main differences with PHP 7.
+Let's see together how strings are implemented into the PHP 5 language core, and the main differences with PHP 7.
 
 ## The PHP 5 way
 
 In PHP 5, strings don't have their own C structure. Yes I know, that may seem extremely surprising, but that's the case.
-We keep playing with traditional C NULL-terminated char arrays, also often written as _char *_.
+We keep playing the traditional way with C NULL-terminated char arrays, also often written as _char *_.
 However, we support what is called _"binary strings"_ , those are strings that can embed the NULL character.
 Strings embeding the NULL char can't be directly passed to libc classical functions anymore, but need to be addressed by special functions (that exist in libc as well) taking care of the length of the string.
 
 Hence PHP 5 memorizes the size of the string, together with the string itself (the _char *_).
-Obviously, as PHP doesn't support Unicode natively, the string stores each C ASCII character, and the length stores the number of characters, as we always assume one char = one byte : the plain 50-year-old C concept of a "string". If one graphical character (what Unicode calls "Grapheme") were to be stored in more than one byte, then every concept presented here falls down to just being wrong. We always assume that one graphical character equals one byte (no Unicode support). Also, remember that _char *_ buffers can contain any byte, not just only printable characters.
+Obviously, as PHP doesn't support Unicode natively, the string stores each C ASCII character, and the length stores the number of characters, as we always assume one printable char = one byte : the plain 50-year-old C concept of a "string", ASCII based. If one graphical character (what Unicode calls "Grapheme") were to be stored in more than one byte, then every concept presented here falls down to just being wrong. We always assume that one graphical character equals one byte (no Unicode support). Also, remember that _char *_ buffers can contain any byte, not just only printable characters.
 
-> One char equals one byte. This statement is always true, worldwide, whatever the machine / the platform. When not talking about Unicode but plain ASCII, one char = one printable character.
+> One C char equals one byte. This statement is always true, worldwide, whatever the machine / the platform. When not talking about Unicode but plain ASCII, one char = one printable character.
 
 So, we end-up having something like :
 
@@ -38,7 +38,7 @@ So, we end-up having something like :
 		zend_ast *ast;
 	} zvalue_value;
 
-I lied a little bit when I said PHP doesn't manage strings using its own structure. In fact, in PHP 5, a string is used in the _str_ field of the zval (the PHP variable container).
+I lied a little bit when I said PHP doesn't manage strings using its own structure. In fact in PHP 5, a string is used in the _str_ field of the zval (the PHP variable container).
 Graphically, this could give :
 
 ![strings_php5](../../../img/php-strings/strings_php5.png)
@@ -49,19 +49,20 @@ This model has several problems, some are addressed in later PHP 5 versions, and
 
 #### Integer size
 
-First thing is that we store the length of the string into an integer , which is platform dependant.
-On LP64 (~Linux/Unix), an integer weights 4 bytes, but on ILP64 (SPARC64), it weights 8 bytes. Things are barely the same for the 32 bits variants. So, depending on your platform, PHP will behave differently. Also, this is pretty uncommon I assume, but you can't store in PHP's string a string which is larger than the size of the integer, aka in Linux LP64, you can't have strings which length would be over 2^31, even though your CPU line is 64 bits large.
+First thing is that we store the length of the string into an integer, which is platform dependant.
+On LP64 (~Linux/Unix), an integer weights 4 bytes, but on ILP64 (SPARC64), it weights 8 bytes. Things are barely the same for the 32 bits variants. So, depending on your platform, PHP will behave differently and have a different memory image, what you wouldn't really expect. That shows a lack of consistency in supporting several platforms (a crucial concept PHP has always tried to carry) and harden debugging.
+Also - this is pretty uncommon I assume - but you can't store in PHP's string a string which is larger than the size of the integer, aka in Linux LP64, you can't have strings which length would be over 2^31, even though your CPU line is 64 bits large.
 
 #### No uniform structure
 
-Second problem : as soon as we don't use the zval container (and its _str_ field), we end-up beeing back in classical C and managing string the traditionnal way.
-As we support binary strings nearly everywhere into the engine, it is not rare, in PHP 5, to see again the same kind of structure, but taken out of the zval container.
+Second problem : as soon as we don't use the zval container (and its _str_ field), we end-up beeing forced to duplicate the concept.
+As we support binary strings nearly everywhere into the engine, it is not rare in PHP 5, to see again the same kind of structure, but taken out of the zval container.
 Examples :
 
 	struct _zend_class_entry {
 		char type;
-		const char *name;
-		zend_uint name_length;
+		const char *name;       /* C string buffer, NULL terminated */
+		zend_uint name_length;  /* String length : num of ASCII chars */
 	...
 
 The above code show a snippet of a PHP class internally : a *zend_class_entry* structure.
@@ -70,14 +71,17 @@ As you can see, this latter also got its own definition of a string : a _char *n
 What about hashtables ?
 
 	typedef struct _zend_hash_key {
-		const char *arKey;
-		uint nKeyLength;
+		const char *arKey;  /* C string buffer, NULL terminated */
+		uint nKeyLength;    /* String length : num of ASCII chars */
 		ulong h;
 	} zend_hash_key;
 
-Here again, this *zend_hash_key* structure is used often when it comes to play with hash tables (very very common use-case) ; and here again, we notice that the concept of "PHP string" is once more duplicated : a _const char* arKey_ and its *uint nKeyLength*
+Here again, this *zend_hash_key* structure is used often when it comes to play with hash tables (very very common use-case) ; and here again, we notice that the concept of "PHP string" is once more duplicated : a _const char* arKey_ and its *uint nKeyLength*.
 
-So to sum-up this second problem, there is no unified way of representing a string in PHP 5. The concept is always the same : a char* buffer and its length ; but this concept is not "globally shared and assumed" across all PHP source code, thus many code duplication happens, as well as one last problem.
+Note that in every case, the length is always a typedef that will more-or-less lead to platform integer (*zend_uint*, *uint*, *int*).
+Some even being signed, thus dividing by two the size capacity.
+
+So to sum-up this second problem, there is no unified way of representing a string in PHP 5. The concept is always the same : a _char*_ buffer together with its length ; but this concept is not "globally shared and assumed" across all PHP source code, thus many code duplication happens, as well as one last problem.
 
 #### Memory usage
 
@@ -114,7 +118,7 @@ This is done by fully duplicating the passed string (the function is `estrndup()
 Why duplicate it ? Because if we change the session id again, well, we'll free the last id, but if this last id string were used elsewhere (in your PHP variables), then you will crash reading free'ed memory.
 Opposite problem : if we just store the pointer into the session module without duplicating the string it points to, what happens if you - PHP user - destroy the variable this $id was stored in ? We'll end up in the exact same (upside down) situation : Session module is going to use a free()'ed pointer, and then is going to crash.
 
-Those situations, were strings are duplicated just to be kept hot in memory for further usage, happen often in PHP source code, and if you dump the heap memory of a PHP process in the middle of its lifetime, you will notice lots of memory bytes that contain the exact same string. This is a pure waste of machine main memory.
+Those situations, where strings are duplicated just to be kept hot in memory for further usage, happen often in PHP source code. If you dump the heap memory of a PHP process in the middle of its lifetime, you will notice lots of memory bytes that contain the exact same string. This is a pure waste of machine main memory.
 
 To solve this last problem, PHP 5.4 added a well-known-yet-clever concept to the receipe : interned strings.
 PHP 7 on its side, reworked in deep the global "string" concept to finally have a very consistent and memory fair solution.
@@ -144,7 +148,7 @@ Interned strings basically tells that a same string (f.e "bar"); should never be
 But, how did PHP implement this concept, back in PHP 5.4 ?
 Let's see that together.
 
-> Interning a string is ensuring this string will never be stored in memory more than once per process. For softwares managing big strings, or many strings, this can represent a nice memory saving as well as better performances regarding any string manipulation.
+> Interning a string is ensuring this string will never be stored in memory more than once per process. For softwares managing big strings, or many strings (like PHP does), this can represent a nice memory saving as well as better performances regarding any string manipulation.
 
 The concept is easy. Whenever we meet a string, instead of creating it with a classical `malloc()` (we are assuming dynamic strings that can't really be stack allocated), we store the string into a bound buffer and add it to a dictionnary (which is a hashtable). If the string is already present in the dictionnary, the API returns its pointer, effectively preventing us from creating yet another copy of such a string in memory.
 
@@ -168,7 +172,7 @@ Here is how we prepare the buffer, at the very early startup stage of PHP (trunc
 		CG(interned_strings).arBuckets = (Bucket **) pecalloc(CG(interned_strings).nTableSize, sizeof(Bucket *), CG(interned_strings).persistent);
 	}
 
-I did truncate some code to ease understanding. What you first must spot, is that the interned string buffer is 1Mb large (1024*1024) and cannot be changed by the PHP user (INI setting). Effectively, when this buffer will be full, it will NOT be resized, and from that point the interned strings API will behave like if there is no interned strings : it will lead us to having malloc()ed our strings.
+What you first must spot, is that the interned string buffer is 1Mb large (1024*1024) and cannot be changed by the PHP user (INI setting). Effectively, when this buffer will be full, it will NOT be resized, and from that point the interned strings API will behave like if there is no interned strings : it will lead us to having malloc()ed our strings.
 
 Now, to create an interned string, we internally use `zend_new_interned_string()` , and not `malloc()` or `strdup()` or anything else :
 
@@ -202,8 +206,8 @@ Now, to create an interned string, we internally use `zend_new_interned_string()
 		/* ... ... */
 
 As you can see, this API immediately returns the string you want to intern, if this latter is already in the interned string buffer.
-If not, it will lookup the interned string hashtable to find if the same string is stored into it. This is a heavy operation, as the hashtable needs to be browsed, and the string needs to be per-byte compared. Both operations will likely invalidate your L1 CPU cache, and possibly your L2 cache as well ; but we only create interned strings when this is necessary and will save performances later (heavilly used string). This is a tradeoff between the work needed to create the string (heavy) and the later work done to fetch back this string and use it.
-If the same string is found in the hashtable, this latter pointer is returned, and the original string buffer can also be freed by the API if we asked it to, passing '1' as last parameter.
+If not, it will lookup the interned string hashtable to find if the same string is stored into it. This is a heavy operation, as the hashtable needs to be browsed, and the string needs to be per-byte compared. Both operations will likely invalidate your L1 CPU cache, and possibly your L2 cache as well ; but we only create interned strings when this is necessary and will save performances later (heavilly used string). This is a tradeoff between the work needed to create the string (heavy) and the later work done to fetch back this string and use it (light, and memory fair).
+If the same string is found in the hashtable, this latter pointer is returned and the original string buffer can also be freed by the API if we asked it to, passing '1' as last parameter.
 
 Let's continue :
 
@@ -216,14 +220,14 @@ Let's continue :
 Like I said, if the memory buffer for storing the strings is full, the API returns the pointer you passed to it, effectively doing nothing.
 Let's end :
 
-	p = (Bucket *) CG(interned_strings_top);
-	CG(interned_strings_top) += ZEND_MM_ALIGNED_SIZE(sizeof(Bucket) + nKeyLength);
+	p = (Bucket *) CG(interned_strings_top); /* reserve room from our allocated buffer */
+	CG(interned_strings_top) += ZEND_MM_ALIGNED_SIZE(sizeof(Bucket) + nKeyLength); /* move up the border */
 	h = zend_inline_hash_func(arKey, nKeyLength);
 	
 	p->arKey = (char*)(p+1);
-	memcpy((char*)p->arKey, arKey, nKeyLength);
+	memcpy((char*)p->arKey, arKey, nKeyLength); /* copy the string into the interned string buffer */
 	if (free_src) {
-	    efree((void *)arKey);
+	    efree((void *)arKey); /* free the original string */
 	}
 	p->nKeyLength = nKeyLength;
 	p->h = h;
@@ -232,12 +236,14 @@ Let's end :
 	
 	/* ... ... */
 	
-	return p->arKey;
+	return p->arKey; /* return the interned string */
 
 And finally, the string is duplicated (`memcpy()`) from the pointer you provided (*arKey*), into the HashTable, which Bucket will be allocated from the interned string buffer itself.
 
 As you can see, there is nothing really complicated, just some clever tricks to make any future manipulation of the related string more efficient.
 For example, the string hash (_h_ variable) is computed every time we intern a string. This hash will be needed any time the string is used as a key into a hashtable, and this is very likely to happen, so we prefer eating some more CPU cycles now (by computing the hash), than later at runtime when performances will be critical to the user.
+
+> Interning a string is an operation which is done weither when PHP starts, or when it compiles a script, never at execution stage.
 
 Now we must think about string destruction. As you probably understood, interned strings are shared pointers, and thus should never be freed randomly by someone, because any place elsewhere the pointer is used, will lead to a use-after-free bug.
 
@@ -369,7 +375,7 @@ You can read more about this [on the dedicated blog post](http://jpauli.github.i
 
 PHP 7 changed many things in the way PHP manipulates strings internally.
 
-### Finally a real shared structure
+### Finally a real shared structure and its API
 
 PHP 7 finally centralized the concept of "strings" into PHP, by designing a structure which is used everywhere PHP uses strings :
 
@@ -460,7 +466,7 @@ If you want to grab the zend_string API, it is inlined (for compilation performa
 
 Like we saw, strings in PHP 7 are now reference counted, and that prevents us from needing to fully duplicate them when wanting to store a "copy" of a string from a layer to the other.
 
-But, interned strings still matter. They are still used in PHP 7, and that works nearly the same way as in PHP 5; except that we don't use a special buffer anymore, because we can flag a *zend_string* as being interned (the structure now allows us to do so).
+But, interned strings still matter. They are still used in PHP 7, and that works nearly the same way as in PHP 5; except that we don't use a special buffer anymore, because we can flag for gargage collector a *zend_string* as being interned (the structure now allows us to do so).
 
 So, creating an interned string in PHP 7, is creating a *zend_string* and flag it with **IS_STR_INTERNED**
 When releasing a *zend_string* using `zend_string_release()`, the API checks if the string is interned and just does nothing if it is the case.

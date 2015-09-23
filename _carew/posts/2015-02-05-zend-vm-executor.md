@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  Getting into the Zend Execution engine
+title:  Getting into the Zend Execution engine (PHP 5)
 ---
 
 ## PHP : an interpreted language
@@ -420,7 +420,7 @@ Maths ? 5 different types for op1 multiplied by 5 different types for op2 : ZEND
 
 This file is named [zend_vm_execute.h](http://lxr.php.net/xref/PHP_5_6/Zend/zend_vm_execute.h), and be carefull as you may have guessed : **it is horribly huge**.
 
-Maths ? We support 167 OPCodes as of PHP5.6 , imagine all those 167 OPCode handlers accept the full 5 possible combinaisons for both their op1 and op2 ...
+Maths ? We support 167 OPCodes as of PHP 5.6 , imagine all those 167 OPCode handlers accept the full 5 possible combinaisons for both their op1 and op2 ...
 That gives 4175 C functions to store into this file.
 
 In fact, every OPCode handler will not accept the 5 different possible types of operands, and will lead to less specialized declinations.

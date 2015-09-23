@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>On PHP function calls</title>
+    <title>On PHP function calls (PHP 5)</title>
 
     <meta name="description" content="">
     <meta name="author" content="Julien Pauli">
@@ -41,7 +41,7 @@
         
                   <div class="content">
                                           <h1>
-                  On PHP function calls</h1>
+                  On PHP function calls (PHP 5)</h1>
                           
               <article>
     <p class="text-muted">
@@ -106,6 +106,9 @@ That's two OPCodes for the <code>strlen()</code> code structure and only one for
 <p>Let me warn you : function calls are complex in PHP. If you want to continue reading this part, you'd better fasten your seat belt ;-)
 In PHP's design and source code, the most complex execution part to analyze is all that's related to function calls.
 I will try to sumarize things here, so that you get enough info to understand, without all the full details related to function calls. You still can fetch them by analyzing the source code.</p>
+<blockquote>
+<p>Functions calls is a strongly complex subject into the engine.</p>
+</blockquote>
 <p>Here, we will talk about <em>runtime</em> of a function call. You should know that the <em>compile time</em> PHP function related operations are also heavy to run for the machine (I mean, really heavy), but as you use an OPCode cache, you don't suffer from anything related to compile time (that is transformation of the PHP source code into Zend VM instructions).
 So here, we assume the script is compiled, and we'll analyze what happens at <em>runtime</em> only.</p>
 <p>Let's just dump the OPCode of an internal function call (<code>strlen()</code>, here) :</p>
@@ -291,7 +294,7 @@ PHP can define new functions at runtime, and PHP can autoload files, defining cl
     EG(called_scope) = EX(call)-&gt;called_scope;
 }</code></pre>
 <p>You know that each function body has its own variable scope. Well it's not magical : the engine switches the scope tables before calling the function code, so that if this one asks for a variable, it will be looked for into the right table.
-And as functions and methods are all the same, you can read some instructions about binding the <code>$this</code> pointer for a method.
+And as functions and methods are all the same, you can read some instructions about binding the <code>$this</code> pointer for a method. If you want to know more about <code>$this</code>, you should read <a href="http://jpauli.github.io/2015/03/24/zoom-on-php-objects.html#what-is-this">that part of the object related article</a>.
 Let's keep going.</p>
 <pre><code>if (fbc-&gt;type == ZEND_INTERNAL_FUNCTION) {</code></pre>
 <p>I told you, internal functions (those designed in C) take a different execution path from user functions. Usually, internal function execution path is more optimized and shorter than user function one, because for internal functions, in C, we can tell the engine internal info about our function, something user designed functions cant.</p>
@@ -332,7 +335,7 @@ So whatever the programmer passed onto the stack to <code>strlen()</code>, this 
     }</code></pre>
 <p>And clearing the stack :</p>
 <pre><code>zend_vm_stack_clear_multiple(1 TSRMLS_CC);</code></pre>
-<p>Finally, if an exception has been thrown during this function execution, we must change the VM path to run the catch block (simplified) :</p>
+<p>Finally, if an exception has been thrown during this function execution, <a href="http://jpauli.github.io/2015/04/09/exceptional-php.html#throwing-an-exception">we must change the VM path to run the catch block</a> (simplified) :</p>
 <pre><code>if (UNEXPECTED(EG(exception) != NULL)) {
         zend_throw_exception_internal(NULL TSRMLS_CC);
         if (RETURN_VALUE_USED(opline) &amp;&amp; EX_T(opline-&gt;result.var).var.ptr) {
@@ -344,11 +347,11 @@ So whatever the programmer passed onto the stack to <code>strlen()</code>, this 
 <p>Now, can you imagine the time your machine spends for calling a very-tiny-and-simple <code>strlen()</code> function ?
 Now multiply this time, because <code>strlen()</code>is called into a loop, with 25,000 iterations, slowly, micro/milli seconds turn to seconds...
 Keep in mind that I just showed you the hot path of instructions beeing run at every PHP function call. Many other things happen as well next to those mandatory steps.
-Also keep in mind that here, because <code>strlen()</code> "useful work" is just one line, the overhead of the engine preparing the function call is larger than the useful function code itself, but that is generaly not the case of a big average of function calls, where the own code of the function itself will consume hopefuly more performance than the noisy surrounding engine code.</p>
+Also keep in mind that here, because <code>strlen()</code> "useful work" is just one line, the overhead of the engine preparing the function call is larger than the useful function code itself, but that is generaly not the case of a big average of function calls, where the own code of the function itself will consume hopefuly more performance than the noisy surrounding engine code required to launch it.</p>
 <p>You may complain about this. You have this right, but please, don't come to me complaining without proposing a valid technical solution to improve this, knowing that if you break compatibility, you'll have to show strong arguments about this ;-)</p>
-<p>The PHP-function-call-related part of the code has been reworked into PHP7 (among many things), and in PHP7, function calls are faster than this. As you can imagine by reading this : there is lot of room for optimization yet into PHP source code, and we, as contributors, try to find ways to optimize things at every new PHP version.</p>
-<p>Not only talking about PHP7, the PHP-function-call-related code has been optimized in every version of PHP, from 5.3 to 5.4, and especially from 5.4 to 5.5, where we changed the way the stack frame is computed and created, for example (without breaking compatibility).
-It is always interesting to read the readme about internals change of each PHP version. <a href="https://github.com/php/php-src/blob/PHP-5.5/UPGRADING.INTERNALS#L24">Here is the one for PHP5.5</a> talking about changes into the executor and into how function calls are performed, compared to PHP54.</p>
+<p>The PHP-function-call-related part of the code has been reworked into PHP 7 (among many things), and in PHP 7, function calls are faster than this. As you can imagine by reading this : there is lot of room for optimization yet into PHP source code, and we, as contributors, try to find ways to optimize things at every new PHP version.</p>
+<p>Not only talking about PHP 7, the PHP-function-call-related code has been optimized in every version of PHP, from 5.3 to 5.4, and especially from 5.4 to 5.5, where we changed the way the stack frame is computed and created, for example (without breaking compatibility).
+It is always interesting to read the readme about internals change of each PHP version. <a href="https://github.com/php/php-src/blob/PHP-5.5/UPGRADING.INTERNALS#L24">Here is the one for PHP5.5</a> talking about changes into the executor and into how function calls are performed, compared to PHP 5.4.</p>
 <p>As a conclusion, remember that this is not a blame to PHP. The PHP source code has been worked for twenty years now, by many different very talented brains, so believe me : it has been thought, worked and optimized many times as of nowadays.
 The proof is that you use PHP, you have some PHP code in production, and it just works and perform very well, with a nice overall performance factor in the very large majority of use cases. Am I wrong ?</p>
 <h3 id="what-about-isset">What about isset() ?<a href="#what-about-isset" class="anchor">#</a></h3>
@@ -447,7 +450,7 @@ PHP compiler, or OPCache optimization passes.</p>
 <h2 id="optimization-tips-and-conclusion">Optimization tips and conclusion<a href="#optimization-tips-and-conclusion" class="anchor">#</a></h2>
 <p>The first tip I would like to share with you, is to not blindly change your code, everywhere you have a good feeling of it.
 Profile. Profile, and see the results.
-With profilers such as <a href="https://blackfire.io/">Blackfire</a>, you can immeditely see the hot path of your script, because it automaticaly trashes the irrelevant
+With profilers such as <a href="https://blackfire.io/">Blackfire</a>, you can immediately see the hot path of your script, because it automaticaly trashes the irrelevant
 information that usually catch your eyes when you read a profile.
 You then know <em>where</em> to start working, because your work costs money, and for it to be worth it, it has to be optimized as well.
 That's a nice balance between the money you'll cost optimizing a script, and the money you'll save because your cloud will be smaller
@@ -459,7 +462,7 @@ The main trick is to optimize what is repeated : loops. If you use a profiler sh
 you'll happen to find that it is likely to be located into loops.
 That's the same when we, as contributors, optimize PHP itself : we won't bother optimizing a part of code a few users will trigger, but better
 optimize the hot path : variable accesses, engine function calls, etc... Because in here, the very little micro-second earned
-will translate to final milli-seconds or even seconds, as such code is run tons of times (usually involving in loops).
+will translate to final milli-seconds or even seconds, as such code is run tons of times (usually involving loops).
 Except <code>foreach()</code>, in PHP, loops are the same and lead to the same OPCode. Turning a PHP's <code>while</code> loop into a <code>for</code> loop is
 both useless and silly. Once more : profiling will tell you that.</p>
 <p>So, about function calls, well... A language needs function calls ;-)

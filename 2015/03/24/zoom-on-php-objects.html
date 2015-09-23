@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>Zoom on PHP objects and classes</title>
+    <title>Zoom on PHP objects and classes (PHP 5)</title>
 
     <meta name="description" content="">
     <meta name="author" content="Julien Pauli">
@@ -41,7 +41,7 @@
         
                   <div class="content">
                                           <h1>
-                  Zoom on PHP objects and classes</h1>
+                  Zoom on PHP objects and classes (PHP 5)</h1>
                           
               <article>
     <p class="text-muted">
@@ -51,21 +51,21 @@
 
     <div class="body">
       <h2 id="php-objects-introduction">PHP objects introduction<a href="#php-objects-introduction" class="anchor">#</a></h2>
-<p>Everybody uses objects nowadays. Something that was not that easy to bet on when PHP5 got released 10 years ago (2005).
+<p>Everybody uses objects nowadays. Something that was not that easy to bet on when PHP 5 got released 10 years ago (2005).
 I still remember this day, I wasn't involved in internals code yet, so I didn't know much things about how all this big machine
 could work. But I had to note at this time, when using this new release of the language, that jumps had been made compared to old
-PHP4.
-The major point advanced for PHP5 adoption was : "it has a new very powerful object model". That wasn't lies.
-Today, 10 years later, something like 90% of the PHP source code involving objects haven't changed since PHP5.0.
+PHP 4.
+The major point advanced for PHP 5 adoption was : "it has a new very powerful object model". That wasn't lies.
+Today, 10 years later, something like 90% of the PHP source code involving objects haven't changed since PHP 5.0.
 That shows how resulted this object model was when released. Sure it got improved through time, with new features especially.</p>
 <p>Here, I will show you as usual how all this stuff works internally. The goal is always the same : you understand and master
 what happens in the low level, to make a better usage of the language everyday.
 Also, I will show you how memory usage has been really worked hard about objects, and how objects are nice about memory, compared
 to equivalent arrays (when possible).</p>
-<p>We will focus on PHP5, starting with PHP 5.4, for this article. The statements will be true for 5.5 and 5.6, which have changed
+<p>We will focus on PHP 5, starting with PHP 5.4, for this article. The statements will be true for 5.5 and 5.6, which have changed
 nearly nothing in object model internals. This is not the case of PHP 5.3, which has a less resulted object model, nice improvements (both in term of user features, and general performances) were added back in PHP 5.4.</p>
-<p>About PHP7, which is still under heavy development nowadays, the object model has not been reworked deeply, only tidy up things on
-surface. Why ? Because we don't need to : it works. Userland features were added, but here we don't care about those : only the
+<p>About PHP 7, the object model has not been reworked deeply, only tidy up things on
+surface. Why ? Because we don't need to : it works. Of course, userland features were added but here we don't care about those : only the
 internal design (the truth) scores :-)</p>
 <h2 id="starter-example">Starter example<a href="#starter-example" class="anchor">#</a></h2>
 <p>Ok so let's start with some synthetic benchmarks to demonstrate things :</p>
@@ -82,7 +82,7 @@ for ($i=0; $i&lt;1000; $i++) {
 }</code></pre>
 <p>This code declares a simple 3 attributes class, and then in a loop, it creates 1000 objects of this class, showing the memory usage diff
 between allocations.</p>
-<p>That are 262 bytes diff at every object creation. Creating an object of class Foo, plus creating a PHP variable to store the object into it, allocate 262 bytes in PHP heap memory.</p>
+<p>That are 262 bytes diff at every object creation (LP64). Creating an object of class Foo, plus creating a PHP variable to store the object into it, allocate 262 bytes in PHP's heap memory (LP64).</p>
 <p>Let's try now to turn this object into an equivalent array, some kind of :</p>
 <pre><code>for ($i=0; $i&lt;1000; $i++) {
     $m = memory_get_usage();
@@ -90,7 +90,7 @@ between allocations.</p>
     echo memory_get_usage() - $m . "\n";
 }</code></pre>
 <p>The array embeds the same values : an array, a null and a foobar string.
-The difference between arrays creation is 1160 bytes : that is something like 4 to 5 times more memory eaten.</p>
+The difference between arrays creation is 1160 bytes (LP64) : that is something like 4 to 5 times more memory eaten.</p>
 <p>Let's do another quick bench :</p>
 <pre><code>$class = &lt;&lt;&lt;'CL'
 class Foo {
@@ -102,8 +102,8 @@ CL;
 echo memory_get_usage() . "\n";
 eval($class);
 echo memory_get_usage() . "\n";</code></pre>
-<p>As class declaration is honorred at compile time, we use an <code>eval()</code> statement to declare it at runtime and measure, with the PHP memory manager, its memory usage, just for it, we haven't created any object of it in this code.</p>
-<p>The diff memory is 2216 bytes, aka about 2Kb.</p>
+<p>As class declaration is honorred at compile time, we use an <code>eval()</code> statement to declare it at runtime and measure - with the PHP memory manager - its memory usage - just for it - we haven't created any object of it in this code (yet).</p>
+<p>The diff memory is 2216 bytes, aka about 2Kb (assuming LP64).</p>
 <p>Now, we are going to dive into PHP's sources to show you what happens, and to confirm our practice by some theory. </p>
 <h2 id="it-all-begins-with-a-class">It all begins with a class...<a href="#it-all-begins-with-a-class" class="anchor">#</a></h2>
 <p>A class is represented internally by the <em>zend_class_entry</em> structure. Here it is :</p>
@@ -173,39 +173,34 @@ echo memory_get_usage() . "\n";</code></pre>
 };</code></pre>
 <p>Huge isn't it ? Its size, assuming an LP64 platform, is <strong>568 bytes</strong>.</p>
 <blockquote>
-<blockquote>
 <p>Everytime PHP needs to declare a class, it must allocate a <em>zend_class_entry</em>, and that will raise its memory heap usage of barely half a kilobyte, just for the class structure, not talking about everything behind it.</p>
 </blockquote>
-</blockquote>
-<p>And of course that is not finished, because like you can see, this zend_class_entry structure is full of pointers, that need to be allocated.</p>
-<blockquote>
+<p>And of course that is not finished, because like you can see, this <em>zend_class_entry</em> structure is full of pointers, that need to be allocated.</p>
 <blockquote>
 <p>The first thing one may remember is that a PHP class (not a PHP object), is a "heavy" thing to store in memory.
 In fact, classes are much more heavy in memory that related future objects to create from it.</p>
 </blockquote>
-</blockquote>
-<p>Also, a class is not alone : it declares attributes (static or not, whatever), and methods.
+<p>Also, a class is not alone : it declares attributes (static or not, whatever), methods and constants.
 Those will consume memory as well. For methods, the computation is not really easy to make, but obviously, the bigger the method body, the more memory this method will eat, because the bigger its OPArray will be. Also, static variables declared into a method (if any) will eat memory.</p>
+<blockquote>
+<p>Internally a method is strictly the same as a function, there is no difference in term of performance or memory usage in both.</p>
+</blockquote>
 <p>Then come the attributes. Those later will also allocate memory, depending on their default values : an integer will be light, but a big static array will eat more memory.</p>
 <p>There is a last thing to take care of, which is detailed into the <em>zend_class_entry</em> source code as well : PHP comments.
-PHP comments, also known as annotations, are strings, in C : char* buffers, and they need to be allocated and are really easy to compute, as in C, not using Unicode like PHP does : <strong>one character = one byte</strong>.</p>
+PHP comments, also known as annotations, are strings, in C : <em>char *</em> buffers, and they need to be allocated and are really easy to compute, as in C not using Unicode like PHP does : <strong>one character = one byte</strong>. For more information about how PHP manages strings internally, please read the <a href="http://jpauli.github.io/2015/09/18/php-string-management.html">dedicated article</a>.</p>
 <blockquote>
-<blockquote>
-<p>The more annotations you have in your class, the more memory will be eaten when the class will be parsed.</p>
+<p>The more annotations you have in your class, the more memory will be eaten when the class is created (parsed). Same thing for methods or attributes.</p>
 </blockquote>
-</blockquote>
-<p>The <em>doc_comment</em> field is used, for <em>zend_class_entry</em>, it retains the class annotations. For methods : their structure also has a <em>doc_comment</em> field, and same for attributes.</p>
+<p>The <em>doc_comment</em> field is used and retains the class annotations. For methods : their structure also has a <em>doc_comment</em> field, and same for attributes.</p>
 <h3 id="user-classes-vs-internal-classes">User classes VS internal classes<a href="#user-classes-vs-internal-classes" class="anchor">#</a></h3>
 <p>Everybody spotted it : a user class is a class defined using PHP, an internal class in a class defined hacking PHP's source, or provided by any extension.</p>
 <blockquote>
-<blockquote>
 <p>The biggest difference to know, is that user classes allocate request-bound memory whereas internal classes allocate "permanent" memory</p>
-</blockquote>
 </blockquote>
 <p>That means that when PHP finishes to treat the actual web HTTP request, it will deallocate and destroy every user classes it knows, to leave the room blank for the next request. This is known as <em>the share nothing architecture</em>, this is how PHP has been designed since the begining, and there is no plan to change it.</p>
 <p>So everytime you start a request and make PHP parse classes : it allocates memory for your class. Then you use your class, and then PHP destroys everything about it.
 So you really should be sure to use every class you declared, if not : you are wasting memory.
-Use an autoloader, because autoloaders delay class parsing/declaration at runtime, when PHP really needs, the class.
+Use an autoloader, because autoloaders delay class parsing/declaration at runtime, when PHP really needs the dedicated class.
 An autoloader will slow down runtime, but will be smart about your process memory usage, as it will not be triggered if the class is not actually really used.</p>
 <p>This is not the case at all for internal classes : their memory is allocated permanently, weither or not they will ever be used, and they will only be destroyed when PHP itself will die : when it has finished treating the number of requests you asked it for (assuming web SAPI, like PHP-FPM f.e), usually, a PHP web worker treats several thousands of requests before dying.
 That's a point why internal classes are more performant than user classes. (Only static attributes will be destroyed at the end of every request, nothing more).</p>
@@ -221,7 +216,10 @@ static int clean_non_persistent_class(zend_class_entry **ce TSRMLS_DC)
 {
     return ((*ce)-&gt;type == ZEND_INTERNAL_CLASS) ? ZEND_HASH_APPLY_STOP : ZEND_HASH_APPLY_REMOVE;
 }</code></pre>
-<p>Note that even with an OPCode cache, like OPCache, class creation and destruction still happen at every request, about user declared classes. OPCache only speeds up those two steps.</p>
+<p>Note that even with an OPCode cache, like OPCache, class creation and destruction still happen at every request for user declared classes. OPCache only speeds up those two steps.</p>
+<blockquote>
+<p>Internal class are more performant than user declared classes, just by the fact that they get allocated only once for all, whereas userland declared classes need to be destroyed and reloaded at every request. Internal classes also got many possibilities not available to user classes.</p>
+</blockquote>
 <p>So you have noted, if you activate many PHP extensions that each declare many classes, but you just use a small part of them : you are wasting memory as well.
 Remember that PHP extensions declare their classes at the time PHP starts, even if in later requests to come those classes will not be used.
 That's why we usually tell users to not keep enabled PHP extensions they just don't use : that's a pure memory waste, especially if the extension declares many classes (among other things extension may allocate as well).</p>
@@ -229,9 +227,7 @@ That's why we usually tell users to not keep enabled PHP extensions they just do
 <p>PHP uses the same <em>zend_class_entry</em> structure internally to manage PHP classes, PHP interfaces and PHP traits.
 So everytime you declare an interface or a trait, the <em>zend_class_entry</em> will be used as well.</p>
 <blockquote>
-<blockquote>
 <p>Internally, PHP classes, interfaces and traits are managed by the exact same structure : <em>zend_class_entry</em></p>
-</blockquote>
 </blockquote>
 <p>And as you've seen, the structure is heavy.
 Sometimes in code, users declare interfaces to be able to use their name in PHP catch blocks. That allows them to catch one kind of exception only.
@@ -242,7 +238,7 @@ class MyException extends Exception implements BarException { }
 try {
     $foo-&gt;bar():
 } catch (BarException $e) { }</code></pre>
-<p>What is pitty here, is that nearly one kilobyte is used, just to declare the <em>BarException</em> interface. Exactly 912 bytes :</p>
+<p>What is pitty here, is that nearly one kilobyte is used, just to declare the <em>BarException</em> interface. Exactly 912 bytes (LP64) :</p>
 <pre><code>$class = &lt;&lt;&lt;'CL'
 interface Bar { }
 CL;
@@ -252,19 +248,15 @@ echo memory_get_usage() - $m . "\n"; /* 912 bytes */</code></pre>
 <p>I'm not telling it is bad, nor silly, I'm not blaming anyone nor anything. I just show you facts you perhaps were not aware of.</p>
 <p>So remember, internally, classes and interfaces (and traits), are exactly used the same way. Simply, an interface will not be able to be added attributes, the PHP parser or compiler will forbid this to you, but the <em>zend_class_entry</em> structure is still used, just that its <em>static_members_table</em> and other fields will not be allocated pointers, that's all.</p>
 <blockquote>
-<blockquote>
 <p>Declaring a class or an equivalent trait or equivalent interface, will barely use the same memory amount, as internally, those 3 concepts share the same structure.</p>
-</blockquote>
 </blockquote>
 <h3 id="class-binding">Class binding<a href="#class-binding" class="anchor">#</a></h3>
 <p>Class binding is a hidden thing PHP users are usually not aware of, until they wonder how things work.
 This concept is yet really important to understand, we could define it as "the process that prepares a class and every piece of related data for it to be fully usable by the PHP user".</p>
 <p>This process is very easy and cheap when we talk about a single class, that is a class not extending anyone, not using any trait, and not implementing any interface. The binding process for such class will be entirely done at compile time, that means that it will be very optimized and won't consume some PHP runtime.</p>
-<p>Please, notice here that we're interested in the user declared class binding process. For internal classes, the same process is done when the classes are registered by PHP Core or PHP extensions, this happens very soon before the user scripts are run, and this happens only once in PHP lifetime.</p>
-<blockquote>
+<p>Please, notice here that we're interested in the user-declared-class binding process. For internal classes, the same process is done when the classes are registered by PHP Core or PHP extensions, this happens very soon before the user scripts are run, and this happens only once in PHP lifetime, thus the userland runtime never suffers from that in term of performance.</p>
 <blockquote>
 <p>Binding a single class is entirely done at compile time. On this point, performances tend to reach internal classes'.</p>
-</blockquote>
 </blockquote>
 <p>Things become much more complicated when we talk about interfaces implementations, or class inheritance.
 In such case, class binding will mainly copy every thing of interest from the parent to the child, would both be classes or interfaces. Let's see that :</p>
@@ -308,32 +300,34 @@ case ZEND_DECLARE_CLASS:
 <li>Add the interface and all its possible mother interfaces to the interface list the class implements</li>
 </ul><p>But take care, when we say "copy", this is not a full deep copy, constants, attributes and functions are all refcounted : the refcount is just incremented by one, meaning one more entity into memory is using the item.</p>
 <blockquote>
-<blockquote>
-<p>Constants, attributes and functions are all refcounted</p>
-</blockquote>
+<p>Binding a class, is barely copying every constant/attributes/methods from its parent, and its interfaces into the current class body - while performing checks.
+The class needs to be fully resolved and ready for use at runtime.
+Constants, attributes and functions are all refcounted, no real copies take place, but the binding process is still not a light step in terms of performance.</p>
 </blockquote>
 <pre><code>ZEND_API void zend_do_implement_interface(zend_class_entry *ce, zend_class_entry *iface TSRMLS_DC)
 {
     /* ... ... */
 
     } else {
-        if (ce-&gt;num_interfaces &gt;= current_iface_num) {
+        if (ce-&gt;num_interfaces &gt;= current_iface_num) { /* resize the vector if needed */
             if (ce-&gt;type == ZEND_INTERNAL_CLASS) {
                 ce-&gt;interfaces = (zend_class_entry **) realloc(ce-&gt;interfaces, sizeof(zend_class_entry *) * (++current_iface_num));
             } else {
                 ce-&gt;interfaces = (zend_class_entry **) erealloc(ce-&gt;interfaces, sizeof(zend_class_entry *) * (++current_iface_num));
             }
         }
-        ce-&gt;interfaces[ce-&gt;num_interfaces++] = iface;
+        ce-&gt;interfaces[ce-&gt;num_interfaces++] = iface; /* Add the interface to the class */
 
+        /* Copy every constants from the interface constants table to the current class constants table */
         zend_hash_merge_ex(&amp;ce-&gt;constants_table, &amp;iface-&gt;constants_table, (copy_ctor_func_t) zval_add_ref, sizeof(zval *), (merge_checker_func_t) do_inherit_constant_check, iface);
+        /* Copy every methods from the interface methods table to the current class methods table */
         zend_hash_merge_ex(&amp;ce-&gt;function_table, &amp;iface-&gt;function_table, (copy_ctor_func_t) do_inherit_method, sizeof(zend_function), (merge_checker_func_t) do_inherit_method_check, ce);
 
         do_implement_interface(ce, iface TSRMLS_CC);
         zend_do_inherit_interfaces(ce, iface TSRMLS_CC);
     }
 }</code></pre>
-<p>Notice the difference between internal classes and user ones ? The former will use <code>realloc()</code> to allocate memory, while the later will use <code>erealloc()</code>. Like I said : <code>realloc()</code> will allocated "permanent" memory, whereas <code>erealloc()</code> will allocate "request-bound" memory, like said earlier.</p>
+<p>Notice the difference between internal classes and user ones ? The former will use <code>realloc()</code> to allocate memory, while the later will use <code>erealloc()</code>. Like I said : <code>realloc()</code> will allocate "permanent" memory, whereas <code>erealloc()</code> will allocate "request-bound" memory.</p>
 <p>So, you can see that when the two constant tables are merged (the interface one and the class one), <code>zval_add_ref</code> is used as merge callback : it will not copy the constant from one table to another, but share its pointer just adding a refcount.</p>
 <p>For the functions tables (methods), <code>do_inherit_method</code> is run for any of them. Here it is :</p>
 <pre><code>static void do_inherit_method(zend_function *function)
@@ -360,13 +354,11 @@ ZEND_API void function_add_ref(zend_function *function)
 }</code></pre>
 <p>The function's OPArray is added a refcount, and every possible static variables declared in the function (which here is a method) is also copied, again also using <code>zval_add_ref</code>.</p>
 <p>Thus, the overall copy process is heavy in term of CPU because it involves many loops and checks, but in term of memory usage, we are really kind here.
-Unfortunately, the interface binding is nowadays fully delayed at runtime, and you will suffer from it at every request. I'm planning to change that soon.</p>
-<p>When it comes to talk about inheritance, well, the process is barely the same as interface implementation, thus it is even more complicated because it involves more stuff.
+Unfortunately, the interface binding is nowadays fully delayed at runtime, and you will suffer from it at every request.</p>
+<p>When it comes to talk about inheritance, well the process is barely the same as interface implementation, thus it is even more complicated because it involves more stuff.
 What is interesting to note however, is that the binding is done at compile time if PHP already knows about the class, and in runtime for the opposite case</p>
 <blockquote>
-<blockquote>
 <p>The inheritance binding is done at compile time if PHP already knows the parent class, and in runtime for the opposite case.</p>
-</blockquote>
 </blockquote>
 <p>So you'd better declare things like this :</p>
 <pre><code>/* good */
@@ -376,6 +368,7 @@ class B extends A { }</code></pre>
 <pre><code>/* bad */
 class B extends A { }
 class A { }</code></pre>
+<p>If you use an autoloader and one-class-per-file rule, PHP will likely never known one class' ancestors when it comes to parse it, and thus, will delay the class binding at runtime.</p>
 <p>Class binding routine can even lead to very strange behaviors, like :</p>
 <pre><code>/* this code snippet works */
 class B extends A { }
@@ -397,17 +390,15 @@ But when the runtime fires to bind C, it looks for B, which doesn't exist, becau
 <li>Classes, interfaces or traits use the exact same structure and same procedures, very little differences</li>
 <li>When doing inheritance or implementations, the binding process is heavy and long for CPU, but light about memory usage as many things are shared and not duplicated. Also, you'd better have class binding fire at compile time</li>
 </ul><p>Now let's talk about our objects.</p>
-<p>Our first chapter showed that creating a "classical" object, of a "classical" user class (that is : there is nothing special in there), the object creation was very light in term of memory, something like a ridiculous amount of 200 bytes...</p>
+<p>Our first chapter showed the creation of a "classical" object from a "classical" user class (that is : there is nothing special in there), the object creation was very light in term of memory, something like a ridiculous amount of 200 bytes on LP64 platform.</p>
 <p>This, is because of the class.
-The class itself has been compiled, and this latter eats memory; but that's for the good : this is to make every single object eat less memory</p>
+The class itself has been compiled, and this latter eats memory; but that's for the good : this is to make every single object eat less memory.</p>
 <p>An object is in fact a ridiculously tiny set of tiny structures.</p>
 <h3 id="object-methods-management">Object methods management<a href="#object-methods-management" class="anchor">#</a></h3>
 <blockquote>
-<blockquote>
-<p>Methods and functions are exactly the same into the engine : a zend_function structure (union). This is just vocabulary ("method", "function").</p>
+<p>Reminder: Methods and functions are exactly the same into the engine : a <em>zend_function</em> structure (union). This is just vocabulary, and the fact that methods are the only place where <code>$this</code> can be used.</p>
 </blockquote>
-</blockquote>
-<p>Methods are represented by an union (zend_function). Methods are compiled by the PHP compiler, and added to the <em>function_table</em> attribute of the <em>zend_class_entry</em>. So at runtime every method is present, this is just a matter of fetching back its pointer to execute it.</p>
+<p>Methods are represented by an union (<em>zend_function</em>). Methods are compiled by the PHP compiler, and added to the <em>function_table</em> attribute of the <em>zend_class_entry</em>. So at runtime every method is present, this is just a matter of fetching back its pointer to execute it.</p>
 <pre><code>typedef union _zend_function {
     zend_uchar type;
 
@@ -425,7 +416,7 @@ The class itself has been compiled, and this latter eats memory; but that's for 
     zend_op_array op_array;
     zend_internal_function internal_function;
 } zend_function;</code></pre>
-<p>When an object tries to invoke a method, the engine by default, will lookup into the object's class function table to invoke it, and if the method doesn't exist, it will invoke the magic <code>__call()</code>. It will also check visibility (public/protected/private), and act accordingly :</p>
+<p>When an object tries to invoke a method, the engine will by default lookup into the object's class function table to invoke it, and if the method doesn't exist, it will invoke the magic <code>__call()</code>. It will also check visibility (public/protected/private), and act accordingly :</p>
 <pre><code>static union _zend_function *zend_std_get_method(zval **object_ptr, char *method_name, int method_len, const zend_literal *key TSRMLS_DC)
 {
     zend_function *fbc;
@@ -482,7 +473,8 @@ The class itself has been compiled, and this latter eats memory; but that's for 
         zend_str_tolower_copy(lc_method_name, method_name, method_len);
         hash_value = zend_hash_func(lc_method_name, method_len+1);
     }</code></pre>
-<p>This is PHP case insensibility. PHP must turn every function to lowercase (<code>zend_str_tolower_copy()</code>), before calling it. Not every function, there is an <code>if</code> statement. The <code>key</code> variable prevents the code from running the case lowering function (the <code>else</code> part), and this <code>key</code> is an optimization that has been added starting from PHP5.4. If the method call is not dynamic, the compiler has already computed the key, and the runtime will have less job to do.</p>
+<p>This is PHP case insensibility. PHP must turn every function to lowercase (<code>zend_str_tolower_copy()</code>), before calling it. This is not a heavy step, but it can seem pretty wasteful, considering it must happen for every method call for every class. This will burn some more CPU cycles for nothing really usefull, and you'd better prevent it.</p>
+<p>Look carefully at the code, there is an <code>if</code> statement. The <code>key</code> variable prevents the code from running the case lowering function (the <code>else</code> part), and this <code>key</code> is an optimization that has been added starting from PHP 5.4. If the method call is not dynamic, the compiler has already computed the key, and the runtime will have less job to do.</p>
 <pre><code>class Foo { public function BAR() { } }
 $a = new Foo;
 $b = 'bar';
@@ -491,28 +483,26 @@ $a-&gt;bar(); /* static call : good */
 $a-&gt;$b(); /* dynamic call : bad */</code></pre>
 <p>When the compiler compiles a function/method, it immediately lowercases it. The above function <code>BAR()</code> is turned into <code>bar()</code> by the compiler, when it adds the method to the class function table.</p>
 <blockquote>
-<blockquote>
-<p>The compiler turns every function/method name to lowercase when it compiles it</p>
+<p>The compiler turns every function/method name to lowercase when it compiles it. PHP really is case-insensible when we talk about functions/methods.</p>
 </blockquote>
-</blockquote>
-<p>When the call happens, on the example above, the first call is static : the compiler have computed the <code>key</code> for the string "bar", and then when it comes to run the method call, it has less job to do.
-The second call above however, is dynamic; then the compiler knows nothing about "$b" : it can't compute a <code>key</code> for the method call, we will then fall into the <code>else</code> case at runtime, and we will have to both turn the string to lowercase, and to compute its hash (<code>zend_hash_func()</code>) at runtime, which is not especially what you're looking for if we talk about performances.</p>
+<p>When the method call happens, on the example above, the first call is static : the compiler have computed the <code>key</code> for the string "bar", and then when it comes to run the method call, it has less job to do.
+The second call above however, is dynamic; the compiler knows nothing about "$b" : it can't compute a <code>key</code> for the method call, we will then fall into the <code>else</code> case at runtime, and we will have to both turn the string to lowercase, and to compute its hash (<code>zend_hash_func()</code>) at runtime, which is not especially what you're looking for if we talk about performances.</p>
 <p>About <code>__call()</code>, it is not that bad about performances, there is however more work to do than calling an existing function though.</p>
 <h3 id="object-attributes-management">Object attributes management<a href="#object-attributes-management" class="anchor">#</a></h3>
 <p>Here is what happens :</p>
 <p><img alt="PHP-objects-and-class-attributes" src="../../../img/php-objects/PHP-objects-and-class-attributes.png"></p>
 <p>As you can see, when you create several objects of the same class, the engine will make every attribute point on the same pointer as the one defined into the class attributes.
-The class stores the attributes, not only its own, static attributes, but also objects ones, for the life of the class : forever for internal classes, request bound lifetime for user classes. Creating an object does not involve creating its attributes, thus, that's a fast and memory saver approach.
+The class stores the attributes, not only its own static attributes - but also objects ones - for the life of the class : forever for internal classes, request bound lifetime for user classes. Creating an object does not involve creating its attributes, thus, that's a fast and memory saver approach.
 Only at the time an object is going to change one of its attribute, the engine will create a new one and affect it, assuming you change the $a attribute on the object Foo #2 :</p>
 <p><img alt="PHP-objects-cow" src="../../../img/php-objects/PHP-objects-cow.png"></p>
-<p>So creating an object, is in fact "just" creating a <em>zend_object</em> structure, which weight 32 bytes :</p>
+<p>So creating an object, is in fact "just" creating a <em>zend_object</em> structure, which weight 32 bytes under LP64...</p>
 <pre><code>typedef struct _zend_object {
     zend_class_entry *ce;
     HashTable *properties;
     zval **properties_table;
     HashTable *guards; /* protects from __get/__set ... recursion */
 } zend_object;</code></pre>
-<p>And add this new <em>zend_object</em> to the object store. The object store is a <em>zend_object_store</em> structure : it is the global Zend Engine registry of objects, the place where in every object is stored exactly once :</p>
+<p>...add this new <em>zend_object</em> to the object store. The object store is a <em>zend_object_store</em> structure : it is the global Zend Engine registry of objects, the place where in every object is stored exactly once :</p>
 <pre><code>ZEND_API zend_object_value zend_objects_new(zend_object **object, zend_class_entry *class_type TSRMLS_DC)
 {
     zend_object_value retval;
@@ -553,13 +543,11 @@ Only at the time an object is going to change one of its attribute, the engine w
 <p>Like you can see, we allocate a pure C table/vector of <code>zval*</code> based on the object's class declared properties, and, in case of non thread safe PHP, we just add a refcount to the property, whereas using Zend thread safety (ZTS), we must deeply copy the zval.
 That's one of the numerous point that confirms that ZTS mode is slower and more resource user than a non ZTS PHP.</p>
 <blockquote>
-<blockquote>
 <p>PHP running with ZendThreadSafety activated (ZTS) is both slower and less memory friendly than a non-ZTS PHP.</p>
-</blockquote>
 </blockquote>
 <p>Now you wonder two things :</p>
 <ul><li>What's the difference bewteen <em>properties_table</em> and <em>properties</em> in the <em>zend_object</em> structure ?</li>
-<li>If we affected our object's attributes in a C vector, how will we fetch them back ? Browser the vector every time ? (counter-performant)</li>
+<li>If we affected our object's attributes in a C vector, how will we fetch them back ? Browse the vector every time ? (counter-performant)</li>
 </ul><p>The answer to both those questions relies in a clever trick : <em>zend_property_info</em>.</p>
 <p>Here is <em>zend_property_info</em> :</p>
 <pre><code>typedef struct _zend_property_info {
@@ -614,7 +602,7 @@ if (EXPECTED(property_info != NULL) &amp;&amp;
         guard-&gt;in_set = 0;
         zval_ptr_dtor(&amp;object);
     /* ... ... */</code></pre>
-<p>So, until you write to your object, its memory consumption will not vary. When you write to it, you start making it bigger, as it will retain the attributes you wrote into it, until it dies.</p>
+<p>So, until you write to your object, its memory consumption will not vary. When you write to it, you start making it bigger, as it will retain the attributes you wrote into it, until it dies. Methods do not consume any memory related to the object, but they belong to the class.</p>
 <h2 id="objects-acting-as-references-thanks-to-the-object-store">Objects acting as references, thanks to the object store<a href="#objects-acting-as-references-thanks-to-the-object-store" class="anchor">#</a></h2>
 <p>Objects are not references. I demonstrate it in a small script :</p>
 <pre><code>function foo($var) {
@@ -623,12 +611,10 @@ if (EXPECTED(property_info != NULL) &amp;&amp;
 $o = new MyClass;
 foo($o);
 var_dump($o); /* this is still an object, not the integer 42 */</code></pre>
-<p>Everybody says that "objects are references in PHP5", even the official manual sometimes suggests this ;-) This is horribly wrong technically.
+<p>Everybody says that "objects are references in PHP 5", even the official manual sometimes suggests this ;-) This is horribly wrong technically.
 However, objects borrow references behavior, as when you pass a variable which is an object to a function, this function can modify the same object.</p>
 <blockquote>
-<blockquote>
 <p>Objects are <strong>not</strong> passed by references, this is <strong>wrong</strong>. However, they borrow the same behavior as PHP variables references.</p>
-</blockquote>
 </blockquote>
 <p>This is because in the zval you pass to the function, you don't pass an object precisely, but its unique identifier, that will serve to look it up into the global object store, thus effectively leading to the same object at the end.
 You can end up having 3 different zvals in memory, they can all store into them the same object handle, and then they will lead to the same object into memory.</p>
@@ -685,9 +671,9 @@ static zend_bool opline_is_fetch_this(const zend_op *opline TSRMLS_DC)
         return 0;
     }
 }</code></pre>
-<p>You can trick that by many ways, thus it is useless to do so ;-)</p>
+<p>You can trick that by many ways, though it's useless to do so ;-)</p>
 <p>Now how is <code>$this</code> managed ?
-When you call a method, which is the only place where you are allowed to use <code>$this</code>, the compiler emits an <code>INIT_METHOD_CALL</code> OPCode.
+When you call a method - which is the only place where you are allowed to use <code>$this</code> - the compiler emits an <code>INIT_METHOD_CALL</code> OPCode.
 You can read <a href="http://jpauli.github.io/2015/01/22/on-php-function-calls.html">On PHP function calls</a> or <a href="http://jpauli.github.io/2015/02/05/zend-vm-executor.html">getting into the Zend execution engine</a> about OPCodes for functions.
 In the <code>INIT_METHOD_CALL</code>, the engine knows who is calling the method, for <code>$a-&gt;foo()</code> : it is <code>$a</code>.
 It then fetches <code>$a</code>'s value, and memorize it in a global space. Then, it calls the method, issuing a <code>DO_FCALL</code> OPCode. In this OPcode, we fetch back the value memorized (the object calling the method), and we assign it to the internally-global <code>$this</code> pointer : <code>EG(This)</code> :</p>
@@ -766,9 +752,7 @@ $a-&gt;foo($b);</code></pre>
 <p>This strangeness has lead to many bugs reported by users, but that's the rule in PHP object model : we don't actually define an object based scope, but a class based scope.
 So in a class "Foo", you can play with every private of every other eventual "Foo" , not only yourself, like the above example demonstrates.</p>
 <blockquote>
-<blockquote>
 <p>PHP's object model scope is class based, not object based.</p>
-</blockquote>
 </blockquote>
 <h2 id="on-destructors">On destructors<a href="#on-destructors" class="anchor">#</a></h2>
 <p>Destructors are dangerous. Don't rely on them, because PHP will even not call them in case of fatal errors :</p>
@@ -837,11 +821,9 @@ destroyed Foo</code></pre>
 <p>This procedure has not been randomly chosen. We do things this way, to be extra sure about everything.
 You don't like it ? Destroy your own objects by yourself ! This is the only way to master <code>__destruct()</code> calls. If you leave PHP destroy your objects for you, don't come complaining about the procedure that has been matured for years, you always have the choice of destroying yourself your objects, to master the order of destructs (I tell this because here again, we've been filled tons of bug reports about PHP objects destructors beeing called "strangely").</p>
 <p>However, in case of any fatal error, PHP will not call any destructor, because a fatal error is likely to have left the Zend Engine in an unstable state, and calling destructors will run user code that may access pointers that are invalid now, and then crash PHP.
-We prefer having something stable, and thus we chose not to call destructors in such cases. Things could change in PHP7 about that.</p>
-<blockquote>
+We prefer having something stable, and thus we chose not to call destructors in such cases.</p>
 <blockquote>
 <p>In case of fatal error, PHP will not call any destructor</p>
-</blockquote>
 </blockquote>
 <p>About recursion also : PHP has not many recursion protection. The only ones that exist are about <code>__get()</code> and <code>__set()</code>.
 If you happen, somewhere in the stack frame of your destructor, to destroy an object of your own : you'll find yourself into an infinite recursion loop that will exaust your process stack size (usually 8Kb, <em>ulimit -s</em>), and crash PHP.</p>

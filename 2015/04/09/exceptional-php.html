@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>Exceptional PHP</title>
+    <title>Exceptional PHP (PHP 5)</title>
 
     <meta name="description" content="">
     <meta name="author" content="Julien Pauli">
@@ -41,7 +41,7 @@
         
                   <div class="content">
                                           <h1>
-                  Exceptional PHP</h1>
+                  Exceptional PHP (PHP 5)</h1>
                           
               <article>
     <p class="text-muted">
@@ -51,7 +51,7 @@
 
     <div class="body">
       <h2 id="php-exceptions-in-short">PHP Exceptions in short<a href="#php-exceptions-in-short" class="anchor">#</a></h2>
-<p>Back in 2004, PHP5 came out with a new model object. This latter allows PHP users to make use of a well known OO paradigm : Exceptions.
+<p>Back in 2004, PHP 5 came out with a new model object. This latter allows PHP users to make use of a well known OO paradigm : Exceptions.
 The Exceptions model has then not been really reworked. PHP 5.3 introduced stacked Exceptions, which is a very nice improvement in stack traces analysis, and PHP 5.5 added the "<em>finally</em>" feature.
 As you know how Exceptions work with PHP, because you are a heavy user of the PHP language, let me show you how this big feature works in the PHP source code, into the Zend Engine : how it's been implemented.</p>
 <h2 id="exception-this-so-particular-class">Exception : this so particular class<a href="#exception-this-so-particular-class" class="anchor">#</a></h2>
@@ -118,8 +118,8 @@ Class [ &lt;internal:Core&gt; class Exception ] {
 <p>As you can see, lots of methods are final : you may not change the default behavior, dictated by the engine source code.
 You cannot clone Exceptions, and if you extend the class, some attributes are private : you can't change them.</p>
 <p>This is because the engine expects some well defined behavior when it comes to play with an Exception object, or one of its children.</p>
-<p>You also know that Exception is the base class of every other exceptions, SPL ones, foobar ones, or yours.
-This is checked when one wants to throw something, for PHP extensions one must call <code>zend_throw_exception_object()</code>, and for PHP userland code the compiler will anyway lead to this same function :</p>
+<p>You also know that Exception is the base class of every other exceptions, SPL ones, foobar ones, or yours. This has changed in PHP 7 where every Exception must implement a new Throwable interface, and where the engine itself can now convert fatal errors into exceptions.
+Exceptions are checked when one wants to throw something, for PHP extensions one must call <code>zend_throw_exception_object()</code>, and for PHP userland code the compiler will anyway lead to this same function (when meeting the <code>throw</code> keyword especially):</p>
 <pre><code>ZEND_API void zend_throw_exception_object(zval *exception TSRMLS_DC)
 {
     zend_class_entry *exception_ce;
@@ -294,15 +294,16 @@ The procedure is fast, because the compiler already filled-in the index of the <
 <p>Continuing the source code of <code>ZEND_HANDLE_EXCEPTION</code> :</p>
 <pre><code>/* ... */
 
+/* Treat finally, as it is alone (no fetchable catch block) */
 if (finally_op_num &amp;&amp; (!catch_op_num || catch_op_num &gt;= finally_op_num)) {
     zend_exception_save(TSRMLS_C);
     EX(fast_ret) = NULL;
     ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[finally_op_num]);
     ZEND_VM_CONTINUE();
-} else if (catch_op_num) {
+} else if (catch_op_num) { /* Treat the catch block, as it is here and fetchable */
     ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[catch_op_num]);
     ZEND_VM_CONTINUE();
-} else {
+} else { /* leave, as there is no catch block nor finally block to fetch and treat */
     if (UNEXPECTED((EX(op_array)-&gt;fn_flags &amp; ZEND_ACC_GENERATOR) != 0)) {
         ZEND_VM_DISPATCH_TO_HANDLER(ZEND_GENERATOR_RETURN);
     } else {
@@ -325,10 +326,10 @@ ZEND_VM_CONTINUE();</code></pre>
 
     ce = Z_OBJCE_P(EG(exception));
 
-    if (ce != catch_ce) {
-        if (!instanceof_function(ce, catch_ce TSRMLS_CC)) {
+    if (ce != catch_ce) { /* This is not our exception ? */
+        if (!instanceof_function(ce, catch_ce TSRMLS_CC)) { /* This is not one of its ancestor ? */
             if (opline-&gt;result.num) {
-                zend_throw_exception_internal(NULL TSRMLS_CC);
+                zend_throw_exception_internal(NULL TSRMLS_CC); /* rethrow the exception */
                 HANDLE_EXCEPTION();
             }
             ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;extended_value]);
@@ -340,7 +341,7 @@ ZEND_VM_CONTINUE();</code></pre>
     if (UNEXPECTED(EG(exception) != exception)) {
         Z_ADDREF_P(EG(exception));
         HANDLE_EXCEPTION();
-    } else {
+    } else { /* This is our exception, let's treat that catch block */
         EG(exception) = NULL;
         ZEND_VM_NEXT_OPCODE();
     }
@@ -350,9 +351,9 @@ ZEND_VM_CONTINUE();</code></pre>
 <p>If it is not our Exception, then we must not run this current catch block : it is not ours. We then "rethrow" the Exception internally : <code>zend_throw_exception_internal()</code>. That will make the VM Executor re-run the <code>ZEND_HANDLE_EXCEPTION</code> OPCode, but this time, starting from our catch block : it will then re-do its operation, considerating the (eventually) next catch block , etc.. etc... until it finds the right catch block (if any) to run code from.</p>
 <p>Important thing : if it is our catch block and we run its code, we reset the exception slot : <code>EG(exception) = NULL;</code></p>
 <h3 id="finally">finally<a href="#finally" class="anchor">#</a></h3>
-<p><em>Finally</em> is a little bit harder to understand and has not been trivial to add to PHP 5.5.</p>
-<p>The trick is that after having run the <em>finally</em> block, we must weither continue execution if a catch treated the exception, or stop the execution if the Exception was actually uncaught.</p>
-<p>To achieve this, we introduced two new OPCodes in PHP5.5, just for the <em>finally</em> feature : <code>ZEND_FAST_CALL</code> and <code>ZEND_FAST_RETURN</code>, and we also play with <code>ZEND_JMP</code>.</p>
+<p><em>Finally</em> is harder to understand and has not been trivial to add to PHP 5.5, it is full of hacks.</p>
+<p>The problem is that after having run the <em>finally</em> block, we must weither continue execution if a catch treated the exception, or stop the execution if the Exception was actually uncaught.</p>
+<p>To achieve this, we introduced two new OPCodes in PHP 5.5, just for the <em>finally</em> feature : <code>ZEND_FAST_CALL</code> and <code>ZEND_FAST_RETURN</code>, and we also play with <code>ZEND_JMP</code>.</p>
 <p>So here is the code the Zend Compiler generates for finally block :</p>
 <pre><code>void zend_do_finally(znode *finally_token TSRMLS_DC)
 {
