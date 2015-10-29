@@ -263,13 +263,75 @@ The OS can try to compact the memory, by merging all the free areas into one big
 
 But such compaction algorithm is really heavy for CPU, and in the meantime, no user process may be given the CPU : the OS is fully working reorganizing its physical memory, thus the system becomes unusable.
 
-Memory segmentation addresses lots of problems about memory management and multitasking, but they also show real weaknesses. Thus, there is a need to enhance the segmentation capabilities and fix those flaws : this is done by another concept : *memory paging*; but we'll stop here for our article.
+Memory segmentation addresses lots of problems about memory management and multitasking, but they also show real weaknesses. Thus, there is a need to enhance the segmentation capabilities and fix those flaws : this is done by another concept : *memory paging*.
+
+## Memory pagination
+
+Memory pagination shares some concepts with memory segmentation and tries to address segmentation problems. We saw that the main problem of memory segmentation is that segments will grow and shrink very often, as the user process asks and releases memory. Sometimes, the OS faces a problem in that it can't find a big enough free space to satisfy a user process memory ask, because the physical memory has been so much fragmented with time : it is full of many segments of different sizes, sparsed everywhere in physical memory leading to a highly fragmented physical memory.
+
+Pagination solves this problem with a simple concept : what if every physical allocation the Kernel will perform is fixed-sized ?
+Pages are physical memory fixed-size segments, nothing else.
+If the OS uses fixed size allocations, it is way easier to manage the space, and the result is that there is no more physical fragmentation.
+
+Let's show an example, once more assuming a tiny 16Kb wide virtual address space, to ease the representation : 
+
+![paged_virtual_memory](../../../img/segfault/paged_virtual_memory.png)
+
+With pagination, we don't talk about heap, stack or code segments, but we divide the whole process virtual memory into fixed size zones : we call them pages. On the example above, we divided the address space as 4 pages of 4Kb each.
+
+Then, we do the same thing with physical memory.
+
+![paged_physical_memory](../../../img/segfault/paged_physical_memory.png)
+
+And the OS simply keeps in what's called the "process page table", the association between one process virtual memory page and the underlying physical page (which we call a "page frame").
+
+![paged_memory_layout](../../../img/segfault/paged_memory_layout.png)
+
+With this way of managing memory, there is no more problem in free space management : the page frame is weither mapped (used), or not ; and it is easy for the kernel to find enough pages to satisfy a user process memory request, it simply keeps a free list of page frames, and browse it at every memory demand.
+
+The page is the smallest memory unit the OS can manage. A page (at our level) is indivisible.
+
+With pages, every process is attached a page table that stores address translations. The translations no longer use the "bound" and "limit" values like it used to do with segmentation, but rather use a "virtual page number (VPN)" and an "offset" into this page.
+
+Let's show an example of address translation with pagination. The virtual address space is 16Kb large, thus we need 14 bits to represent an address (2^14 = 16kb). The page size is 4Kb, so we need 4kb (16/4) to select our page :
+
+![paged_address_layout](../../../img/segfault/paged_address_layout.png)
+
+Now, when the process wants to load for example address 9438 (out of 16384 possibilities), it gives 10.0100.1101.1110 in binary, leading to this :
+
+![paged_address_example](../../../img/segfault/paged_address_example.png)
+
+That is the 1246th byte in virtual page 2 ("0100.1101.1110"th byte in "10"th page). Now, the OS simply has to lookup this process page table, to know what page 2 maps. According to what we suggested, page 2 is the 8k byte in physical memory.
+Thus, virtual address 9438 leads to physical address 9442 (8k + 1246 offset). We found our data !
+
+Like we said, there is one page table per process, because each process will have its own address translations, just like with segments. But wait, where are those page tables actually stored ? Guess... : in physical memory yes, where else could they be ?
+
+If page tables are themselves stored into memory, that means that for every memory access, the memory will have to be accessed to fetch the VPN. So with pages, one memory access equals in fact two memory accesses : one to fetch the page table entry, and one to access the "real" data. Knowing that memory accesses are slow, that doesn't seem like a nice solution does it ?
+
+## Translation-lookaside Buffer : TLB
+
+Using paging as the core mechanism to support virtual memory can lead to high performance overheads. By chopping the address space into small, fixed-sized units (pages), paging requires a large amount of mapping information. Because that mapping information is generally stored in physical memory, paging logically requires an extra memory lookup for each virtual address generated by the program.
+
+And here comes once more the hardware, to accelerate things and help the OS. In pagination, like in segmentation, the hardware will fire and help the OS Kernel to translate addresses in an efficient acceptable way. TLB is part of the MMU, and is just a simple cache of some VPN translations. TLB will prevent the OS from firing a memory access to access the process page table to get the physical memory address from the virtual one.
+
+The hardware MMU will fire at every virtual memory access, extract the VPN from this address, and lookup the TLB if it has a hit for this specific VPN. If it has a hit, well, it just accomplished its role. If it gets a miss, then it will lookup the process page table, and if the memory reference is valid, it will update the TLB so that any further memory access of this page will find a hit in the TLB.
+
+Like any cache, you'd better have a hit than a miss, as the miss situation will trigger a page lookup and will result in a slow memory access.
+You'd guess as well that the bigger the pages are, the better it is for a TLB hit situation, but the more wasted space you'll experience in each page. A tradeoff must be found here. Modern kernels use different page sizes, like the Linux Kernel may use what's called "huge pages", pages that are 2Mb large instead of the traditionnal 4Kb large.
+
+Also, you'd better store informations in contiguous memory addresses. If you sparse your data in memory, you'll more likely suffer from TLB misses or TLB beeing full. This is what's called spacial locality efficiency of the TLB : the data immeditely next to yours may be retained in the same physical page, thus benefit from the current memory access from the TLB.
+
+For context switches, the TLB stores also what's called the ASID in each of its entries. This stands for the Address Space Identifier, which is something like a PID. Each process scheduled has its own ASID, then the TLB can manage any process address without risk of invalid addresses coming from other processes.
+
+Here again, if the user process tries to load an invalid address, the address will likely not be stored into the TLB, hence a miss and a lookup into the process page table entry. Here, the address is stored (as every possible translation is stored) but with an invalid bit set. Under X86, each translation uses 4bytes, thus many bits in there are available, and it is not rare to find a valid bit, together with other complex stuff such as a dirty bit, the protection bits, a reference bit etc... If the entry is marked invalid, the OS will trigger by default a SIGSEGV, which leads to a "segmentation fault", even if here, we don't talk about segments anymore.
+
+What you need to know is that paging is pretty more complex in modern OS that what I explained. Modern OS typically use multi level page table entries, multi page sizes as well as a crucial concept we won't explain : page eviction, known as "swaping" (a process where the Kernel exchange pages from memory to disk, to efficiently use main memory and give the illusion to user processes that main memory is unlimited in space).
 
 ## Conclusion
 
-You now know what resides under the "segmentation fault" message. OSes use segments to map virtual memory space to physical memory space.
-When a user land process wants to access some memory, it issues a demand that the MMU will translate to a physical memory address. But if this address is wrong : out of the bounds of the physical segment, or if the segment rights are not good (asking to write to a read-only segment), then the OS by default sends a signal to the faulting process : a SIGSEGV , which has a default handler that kills the process and outputs a message : "Segmentation fault". Under other OSes (guess), it is often reported as a "General protection fault". For Linux, we are lucky to be able to access the source code, here is the place of the source code, for X86/64 platforms, that manages memory access errors : [http://lxr.free-electrons.com/source/arch/x86/mm/fault.c](http://lxr.free-electrons.com/source/arch/x86/mm/fault.c) , and for SIGSEGV, its precisely [here](http://lxr.free-electrons.com/source/arch/x86/mm/fault.c#L731)
+You now know what resides under the "segmentation fault" message. OSes used to use segments to map virtual memory space to physical memory space.
+When a user land process wants to access some memory, it issues a demand that the MMU will translate to a physical memory address. But if this address is wrong : out of the bounds of the physical segment, or if the segment protection rights are not good (asking to write to a read-only segment), then the OS by default sends a signal to the faulting process : a SIGSEGV , which has a default handler that kills the process and outputs a message : "Segmentation fault". Under other OSes (guess), it is often reported as a "General protection fault". For Linux, we are lucky to be able to access the source code, here is the place of the source code, for X86/64 platforms, that manages memory access errors : [http://lxr.free-electrons.com/source/arch/x86/mm/fault.c](http://lxr.free-electrons.com/source/arch/x86/mm/fault.c) , and for SIGSEGV, its precisely [here](http://lxr.free-electrons.com/source/arch/x86/mm/fault.c#L731)
 
-If you are interested in the design of segments for X86/64 platforms, you can [look at their definition in the Linux Kernel](http://lxr.free-electrons.com/source/arch/x86/include/asm/segment.h#L8).
+If you are interested in the design of segments for X86/64 platforms, you can [look at their definition in the Linux Kernel](http://lxr.free-electrons.com/source/arch/x86/include/asm/segment.h#L8). You will also find interesting stuff about memory paging, which pushes the segmentation of memory way further than classical segments usage.
 
-I liked writing this article, it drove me back in late nineties, when I was programming my first CPUs : [Motorola 68HC11](http://www.freescale.com/files/microcontrollers/doc/data_sheet/M68HC11E.pdf) Using C, VHDL and direct Assembly, then I turned to Web ; but my first knowledge come from electronics, and I'm pretty sure I will go back to CPU programming and embed systems later in my career, I find this so exciting...
+I liked writing this article, it drove me back in late nineties, when I was programming my first CPUs : [Motorola 68HC11](http://www.freescale.com/files/microcontrollers/doc/data_sheet/M68HC11E.pdf) using C, VHDL and direct Assembly. I did not program a virtual memory management OS myself but used physical addresses directly (such a CPU did not need such complex mechanisms). Then I turned to Web ; but my first knowledge come from electronics, the systems we make use of everyday... Exciting.
