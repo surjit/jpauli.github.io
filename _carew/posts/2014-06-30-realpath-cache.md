@@ -110,7 +110,6 @@ The true parameter is very important, it is named *$clear_realpath_cache*, so ye
 
 So here is an example.
 
-	<?php
 	$f = @file_get_contents('/tmp/bar.php');
 
 	echo "hello";

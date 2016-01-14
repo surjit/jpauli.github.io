@@ -71,7 +71,7 @@ Reference counting is a really really common basic computer programming trick to
 But should you know how reference counting works, you should know there are some situations you should avoid.</p>
 <p>I'm gonna talk about reference mismatch in PHP function calls here.</p>
 <h2 id="what-to-do-or-not-to-do">What to do or not to do ?<a href="#what-to-do-or-not-to-do" class="anchor">#</a></h2>
-<p>What you should do is not use references (&amp;) , until you really master what you do.</p>
+<p>What you should do is not use references (&) , until you really master what you do.</p>
 <p>More seriously, you should absolutely avoid <strong>reference mismatch</strong> when calling functions.
 This is absolutely awfull for PHP, as any mismatch will make it duplicate the variable's memory.
 If the variable is big (a very long string, a very complex array), then you're gonna start feeling it.
@@ -84,12 +84,12 @@ you pass it a non-reference, or the opposite case.</p>
 <pre><code>function foo($arg) { }
 
 $a = "some var";
-$b = &amp;$a; /* turn $a and $b into references */
+$b = &$a; /* turn $a and $b into references */
 
 foo($a); /* Reference mismatch */
 foo($b); /* idem */</code></pre>
 <p>!</p>
-<pre><code>function foo(&amp;$arg) { } /* this function accepts an arg by reference */
+<pre><code>function foo(&$arg) { } /* this function accepts an arg by reference */
 
 $a = "some var";
 $b = $a; /* increment $a refcount so that the content is bound to two different variables */
@@ -105,7 +105,7 @@ until you explicitely tells it to do so. And you only have one way to tell it to
 <pre><code>function wow($arg) { var_dump('in function wow : ', memory_get_usage()); }
 
 $big = range(1, 1024*1024); /* This consumes lots of memory */
-$big2 = &amp;$big; /* $big and $big2 are both references to the same memory slot */
+$big2 = &$big; /* $big and $big2 are both references to the same memory slot */
 
 var_dump('original memory', memory_get_usage());
 wow($big); /* $big is a reference, but the function accepts a non-reference : mismatch : duplicate memory */
@@ -127,8 +127,8 @@ elsewhere. This is just a <a href="http://en.wikipedia.org/wiki/Reference_counti
 
 $big = range(1, 1024*1024); /* This consumes lots of memory */
 $obj = new StdClass; /* Create a basic object */
-$obj-&gt;big = $big; /* Turn this object into a BIG object by affecting one of its property to a huge var */
-$obj2 = &amp;$obj; /* Turn $obj into a reference, by linking it by reference to another variable */
+$obj->big = $big; /* Turn this object into a BIG object by affecting one of its property to a huge var */
+$obj2 = &$obj; /* Turn $obj into a reference, by linking it by reference to another variable */
 
 var_dump('original memory', memory_get_usage());
 wow($obj);
@@ -202,10 +202,8 @@ For example, I will not make PHP the first choice when talking about designing a
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

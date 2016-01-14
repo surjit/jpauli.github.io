@@ -52,9 +52,9 @@
     <div class="body">
       <h2 id="introducting-the-facts">Introducting the facts<a href="#introducting-the-facts" class="anchor">#</a></h2>
 <p>This blog post is a technical explanation of a PHP optimization found with <a href="https://blackfire.io/">Blackfire profiler</a> into a PHP script.
-The related post is located here : <a href="http://blog.blackfire.io/owncloud.html"><a href="http://blog.blackfire.io/owncloud.html">http://blog.blackfire.io/owncloud.html</a></p>
+The related post is located here : <a href="http://blog.blackfire.io/owncloud.html"></a><a href="http://blog.blackfire.io/owncloud.html">http://blog.blackfire.io/owncloud.html</a></p>
 <p>Basically, it concludes with :</p>
-<pre><code>if (strlen($name) &gt; 49) {
+<pre><code>if (strlen($name) > 49) {
 ...
 }</code></pre>
 <p>Beeing about 20% slower than</p>
@@ -74,7 +74,7 @@ In fact, <code>strlen()</code> is probably the fastest PHP function that exists.
     char *s1;
     int s1_len;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &amp;s1, &amp;s1_len) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &s1, &s1_len) == FAILURE) {
         return;
     }
 
@@ -85,19 +85,19 @@ In fact, <code>strlen()</code> is probably the fastest PHP function that exists.
 <p>Here is the <em>if(strlen())</em> construct disassembled :</p>
 <pre><code>line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   SEND_VAR                                                 !0
+   3     0  >   SEND_VAR                                                 !0
          1      DO_FCALL                                      1  $0      'strlen'
          2      IS_SMALLER                                       ~1      42, $0
-         3    &gt; JMPZ                                                     ~1, -&gt;5
-   5     4  &gt; &gt; JMP                                                      -&gt;5
-   6     5  &gt; &gt; RETURN                                                   1</code></pre>
+         3    > JMPZ                                                     ~1, ->5
+   5     4  > > JMP                                                      ->5
+   6     5  > > RETURN                                                   1</code></pre>
 <p>And here is the semanticaly equivalent <em>if(isset())</em> structure disassembled :</p>
 <pre><code>line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   ISSET_ISEMPTY_DIM_OBJ                       33554432  ~0      !0, 42
-         1    &gt; JMPZ                                                  ~0, -&gt;3
-   5     2  &gt; &gt; JMP                                                       -&gt;3
-   6     3  &gt; &gt; RETURN                                                     1</code></pre>
+   3     0  >   ISSET_ISEMPTY_DIM_OBJ                       33554432  ~0      !0, 42
+         1    > JMPZ                                                  ~0, ->3
+   5     2  > > JMP                                                       ->3
+   6     3  > > RETURN                                                     1</code></pre>
 <p>As you can see, there is no function call involved into the <code>isset()</code> code (<strong>DO_FCALL</strong>), as well as there is no <strong>IS_SMALLER</strong> OPCode (just ignore the RETURN statements).
 <code>isset()</code> will directly return a boolean for evaluation, whereas <code>strlen()</code> will return a temporary variable, passed to <strong>IS_SMALLER</strong> OPCode, and only this OPCode result will be evaluated by the <code>if()</code>.
 That's two OPCodes for the <code>strlen()</code> code structure and only one for the <code>isset()</code> one, which lets us smell that the <code>isset()</code> structure will also be faster because of this fact. (computing two operations is usually slower that computing just one).</p>
@@ -116,7 +116,7 @@ So here, we assume the script is compiled, and we'll analyze what happens at <em
 
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-3     0  &gt;   SEND_VAR                                                 !0
+3     0  >   SEND_VAR                                                 !0
       1      DO_FCALL                                      1          'strlen'</code></pre>
 <p>To understand function calls, one should know those points :</p>
 <ul><li>Function calls and method calls are exactly the same</li>
@@ -154,22 +154,22 @@ static zend_always_inline void *zend_vm_stack_alloc(size_t size TSRMLS_DC)
 
     size = (size + (sizeof(void*) - 1)) / sizeof(void*);
 
-    if (ZEND_MM_ALIGNMENT &gt; sizeof(void*)) {
+    if (ZEND_MM_ALIGNMENT > sizeof(void*)) {
         /* ... ... */
     } else {
         ZEND_VM_STACK_GROW_IF_NEEDED((int)size);
     }
-    ret = (void*)EG(argument_stack)-&gt;top;
-    EG(argument_stack)-&gt;top += size;
+    ret = (void*)EG(argument_stack)->top;
+    EG(argument_stack)->top += size;
     return ret;
 }
 
-#define ZEND_VM_STACK_GROW_IF_NEEDED(count)                            \
+#define ZEND_VM_STACK_GROW_IF_NEEDED(count)                         \
     do {                                                            \
-        if (UNEXPECTED((count) &gt;                                    \
-            EG(argument_stack)-&gt;end - EG(argument_stack)-&gt;top)) {    \
+        if (UNEXPECTED((count) >                                    \
+            EG(argument_stack)->end - EG(argument_stack)->top)) {   \
             zend_vm_stack_extend((count) TSRMLS_CC);                \
-        }                                                            \
+        }                                                           \
 } while (0)</code></pre>
 <p>So finally, stack frame management is not that heavy in PHP, what however can be, is argument passing.</p>
 <p><strong>SEND_VAR</strong> is an opcode that is responsible of pushing args onto the stack frame. The compiler inevitably generates such an OPCode before a function call. And there will be as many of them as there are variables to pass to the function. See :</p>
@@ -178,7 +178,7 @@ setcookie('foo', 'bar', 128, $a);
 
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   ASSIGN                                                   !0, '%2F'
+   3     0  >   ASSIGN                                                   !0, '%2F'
    4     1      SEND_VAL                                                 'foo'
          2      SEND_VAL                                                 'bar'
          3      SEND_VAL                                                 128
@@ -197,7 +197,7 @@ line     #* I O op                           fetch          ext  return  operand
     zend_free_op free_op1;
     varptr = GET_OP1_ZVAL_PTR(BP_VAR_R);
 
-    if (varptr == &amp;EG(uninitialized_zval)) {
+    if (varptr == &EG(uninitialized_zval)) {
         ALLOC_ZVAL(varptr);
         INIT_ZVAL(*varptr);
         Z_SET_REFCOUNT_P(varptr, 0);
@@ -230,20 +230,20 @@ zend_vm_stack_push(varptr TSRMLS_CC);</code></pre>
     USE_OPLINE
     zend_free_op free_op1;
     zval *fname = GET_OP1_ZVAL_PTR(BP_VAR_R);
-    call_slot *call = EX(call_slots) + opline-&gt;op2.num;
+    call_slot *call = EX(call_slots) + opline->op2.num;
 
-    if (CACHED_PTR(opline-&gt;op1.literal-&gt;cache_slot)) {
-        EX(function_state).function = CACHED_PTR(opline-&gt;op1.literal-&gt;cache_slot);
-    } else if (UNEXPECTED(zend_hash_quick_find(EG(function_table), Z_STRVAL_P(fname), Z_STRLEN_P(fname)+1, Z_HASH_P(fname), (void **) &amp;EX(function_state).function)==FAILURE)) {
+    if (CACHED_PTR(opline->op1.literal->cache_slot)) {
+        EX(function_state).function = CACHED_PTR(opline->op1.literal->cache_slot);
+    } else if (UNEXPECTED(zend_hash_quick_find(EG(function_table), Z_STRVAL_P(fname), Z_STRLEN_P(fname)+1, Z_HASH_P(fname), (void **) &EX(function_state).function)==FAILURE)) {
         SAVE_OPLINE();
-        zend_error_noreturn(E_ERROR, "Call to undefined function %s()", fname-&gt;value.str.val);
+        zend_error_noreturn(E_ERROR, "Call to undefined function %s()", fname->value.str.val);
     } else {
-        CACHE_PTR(opline-&gt;op1.literal-&gt;cache_slot, EX(function_state).function);
+        CACHE_PTR(opline->op1.literal->cache_slot, EX(function_state).function);
     }
-    call-&gt;fbc = EX(function_state).function;
-    call-&gt;object = NULL;
-    call-&gt;called_scope = NULL;
-    call-&gt;is_ctor_call = 0;
+    call->fbc = EX(function_state).function;
+    call->object = NULL;
+    call->called_scope = NULL;
+    call->is_ctor_call = 0;
     EX(call) = call;
 
     FREE_OP1();
@@ -257,48 +257,48 @@ Many cache tricks are used into the Zend VM, for it to be as efficient as possib
 I can't copy the code of this function here, as it is so huge.
 I will show you what operations are done into it. Basically, many checks are done, and they all are done now : at runtime, because once more of the heavilly dynamic nature of PHP.
 PHP can define new functions at runtime, and PHP can autoload files, defining classes and functions at runtime, so PHP must perform a lot of its checks at runtime, and this is bad for performance, but that's the design of a dynamic language, those are othogonal concepts.</p>
-<pre><code>if (UNEXPECTED((fbc-&gt;common.fn_flags &amp; (ZEND_ACC_ABSTRACT|ZEND_ACC_DEPRECATED)) != 0)) {
-        if (UNEXPECTED((fbc-&gt;common.fn_flags &amp; ZEND_ACC_ABSTRACT) != 0)) {
-            zend_error_noreturn(E_ERROR, "Cannot call abstract method %s::%s()", fbc-&gt;common.scope-&gt;name, fbc-&gt;common.function_name);
+<pre><code>if (UNEXPECTED((fbc->common.fn_flags & (ZEND_ACC_ABSTRACT|ZEND_ACC_DEPRECATED)) != 0)) {
+        if (UNEXPECTED((fbc->common.fn_flags & ZEND_ACC_ABSTRACT) != 0)) {
+            zend_error_noreturn(E_ERROR, "Cannot call abstract method %s::%s()", fbc->common.scope->name, fbc->common.function_name);
             CHECK_EXCEPTION();
             ZEND_VM_NEXT_OPCODE(); /* Never reached */
         }
-        if (UNEXPECTED((fbc-&gt;common.fn_flags &amp; ZEND_ACC_DEPRECATED) != 0)) {
+        if (UNEXPECTED((fbc->common.fn_flags & ZEND_ACC_DEPRECATED) != 0)) {
             zend_error(E_DEPRECATED, "Function %s%s%s() is deprecated",
-                fbc-&gt;common.scope ? fbc-&gt;common.scope-&gt;name : "",
-                fbc-&gt;common.scope ? "::" : "",
-                fbc-&gt;common.function_name);
+                fbc->common.scope ? fbc->common.scope->name : "",
+                fbc->common.scope ? "::" : "",
+                fbc->common.function_name);
         }
     }
-    if (fbc-&gt;common.scope &amp;&amp;
-        !(fbc-&gt;common.fn_flags &amp; ZEND_ACC_STATIC) &amp;&amp;
+    if (fbc->common.scope &&
+        !(fbc->common.fn_flags & ZEND_ACC_STATIC) &&
         !EX(object)) {
 
-        if (fbc-&gt;common.fn_flags &amp; ZEND_ACC_ALLOW_STATIC) {
+        if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
             /* FIXME: output identifiers properly */
-            zend_error(E_STRICT, "Non-static method %s::%s() should not be called statically", fbc-&gt;common.scope-&gt;name, fbc-&gt;common.function_name);
+            zend_error(E_STRICT, "Non-static method %s::%s() should not be called statically", fbc->common.scope->name, fbc->common.function_name);
         } else {
             /* FIXME: output identifiers properly */
             /* An internal function assumes $this is present and won't check that. So PHP would crash by allowing the call. */
-            zend_error_noreturn(E_ERROR, "Non-static method %s::%s() cannot be called statically", fbc-&gt;common.scope-&gt;name, fbc-&gt;common.function_name);
+            zend_error_noreturn(E_ERROR, "Non-static method %s::%s() cannot be called statically", fbc->common.scope->name, fbc->common.function_name);
         }
     }</code></pre>
 <p>See all those checks ? Let's continue, because it's far from beeing finished :</p>
-<pre><code>if (fbc-&gt;type == ZEND_USER_FUNCTION || fbc-&gt;common.scope) {
+<pre><code>if (fbc->type == ZEND_USER_FUNCTION || fbc->common.scope) {
     should_change_scope = 1;
     EX(current_this) = EG(This);
     EX(current_scope) = EG(scope);
     EX(current_called_scope) = EG(called_scope);
     EG(This) = EX(object);
-    EG(scope) = (fbc-&gt;type == ZEND_USER_FUNCTION || !EX(object)) ? fbc-&gt;common.scope : NULL;
-    EG(called_scope) = EX(call)-&gt;called_scope;
+    EG(scope) = (fbc->type == ZEND_USER_FUNCTION || !EX(object)) ? fbc->common.scope : NULL;
+    EG(called_scope) = EX(call)->called_scope;
 }</code></pre>
 <p>You know that each function body has its own variable scope. Well it's not magical : the engine switches the scope tables before calling the function code, so that if this one asks for a variable, it will be looked for into the right table.
 And as functions and methods are all the same, you can read some instructions about binding the <code>$this</code> pointer for a method. If you want to know more about <code>$this</code>, you should read <a href="http://jpauli.github.io/2015/03/24/zoom-on-php-objects.html#what-is-this">that part of the object related article</a>.
 Let's keep going.</p>
-<pre><code>if (fbc-&gt;type == ZEND_INTERNAL_FUNCTION) {</code></pre>
+<pre><code>if (fbc->type == ZEND_INTERNAL_FUNCTION) {</code></pre>
 <p>I told you, internal functions (those designed in C) take a different execution path from user functions. Usually, internal function execution path is more optimized and shorter than user function one, because for internal functions, in C, we can tell the engine internal info about our function, something user designed functions cant.</p>
-<pre><code>fbc-&gt;internal_function.handler(opline-&gt;extended_value, ret-&gt;var.ptr, (fbc-&gt;common.fn_flags &amp; ZEND_ACC_RETURN_REFERENCE) ? &amp;ret-&gt;var.ptr : NULL, EX(object), RETURN_VALUE_USED(opline) TSRMLS_CC);</code></pre>
+<pre><code>fbc->internal_function.handler(opline->extended_value, ret->var.ptr, (fbc->common.fn_flags & ZEND_ACC_RETURN_REFERENCE) ? &ret->var.ptr : NULL, EX(object), RETURN_VALUE_USED(opline) TSRMLS_CC);</code></pre>
 <p>This line above is the line that calls the internal function handler. For our <code>strlen()</code> example, this above line calls to run the <code>strlen()</code> source code :</p>
 <pre><code>/* PHP's strlen() source code */
 ZEND_FUNCTION(strlen)
@@ -306,7 +306,7 @@ ZEND_FUNCTION(strlen)
     char *s1;
     int s1_len;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &amp;s1, &amp;s1_len) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &s1, &s1_len) == FAILURE) {
         return;
     }
 
@@ -319,15 +319,15 @@ So whatever the programmer passed onto the stack to <code>strlen()</code>, this 
 <p>Let's continue into the execution, we just executed the function body code, now, let's cleanup things, starting by restoring the scope :</p>
 <pre><code>if (should_change_scope) {
         if (EG(This)) {
-            if (UNEXPECTED(EG(exception) != NULL) &amp;&amp; EX(call)-&gt;is_ctor_call) {
-                if (EX(call)-&gt;is_ctor_result_used) {
+            if (UNEXPECTED(EG(exception) != NULL) && EX(call)->is_ctor_call) {
+                if (EX(call)->is_ctor_result_used) {
                     Z_DELREF_P(EG(This));
                 }
                 if (Z_REFCOUNT_P(EG(This)) == 1) {
                     zend_object_store_ctor_failed(EG(This) TSRMLS_CC);
                 }
             }
-            zval_ptr_dtor(&amp;EG(This));
+            zval_ptr_dtor(&EG(This));
         }
         EG(This) = EX(current_this);
         EG(scope) = EX(current_scope);
@@ -338,8 +338,8 @@ So whatever the programmer passed onto the stack to <code>strlen()</code>, this 
 <p>Finally, if an exception has been thrown during this function execution, <a href="http://jpauli.github.io/2015/04/09/exceptional-php.html#throwing-an-exception">we must change the VM path to run the catch block</a> (simplified) :</p>
 <pre><code>if (UNEXPECTED(EG(exception) != NULL)) {
         zend_throw_exception_internal(NULL TSRMLS_CC);
-        if (RETURN_VALUE_USED(opline) &amp;&amp; EX_T(opline-&gt;result.var).var.ptr) {
-            zval_ptr_dtor(&amp;EX_T(opline-&gt;result.var).var.ptr);
+        if (RETURN_VALUE_USED(opline) && EX_T(opline->result.var).var.ptr) {
+            zval_ptr_dtor(&EX_T(opline->result.var).var.ptr);
         }
         HANDLE_EXCEPTION();
     }</code></pre>
@@ -366,16 +366,16 @@ The proof is that you use PHP, you have some PHP code in production, and it just
     offset = GET_OP2_ZVAL_PTR(BP_VAR_R);
 
     /* ... code pruned ... */
-    } else if (Z_TYPE_P(container) == IS_STRING &amp;&amp; !prop_dim) { /* string offsets */
+    } else if (Z_TYPE_P(container) == IS_STRING && !prop_dim) { /* string offsets */
         zval tmp;
-        /* ... code pruned ...&nbsp;*/
+        /* ... code pruned ... */
         if (Z_TYPE_P(offset) == IS_LONG) { /* we passed an integer as offset */
-            if (opline-&gt;extended_value &amp; ZEND_ISSET) {
-                if (offset-&gt;value.lval &gt;= 0 &amp;&amp; offset-&gt;value.lval &lt; Z_STRLEN_P(container)) {
+            if (opline->extended_value & ZEND_ISSET) {
+                if (offset->value.lval >= 0 && offset->value.lval < Z_STRLEN_P(container)) {
                     result = 1;
                 }
-            } else /* if (opline-&gt;extended_value &amp; ZEND_ISEMPTY) */ {
-                if (offset-&gt;value.lval &gt;= 0 &amp;&amp; offset-&gt;value.lval &lt; Z_STRLEN_P(container) &amp;&amp; Z_STRVAL_P(container)[offset-&gt;value.lval] != '0') {
+            } else /* if (opline->extended_value & ZEND_ISEMPTY) */ {
+                if (offset->value.lval >= 0 && offset->value.lval < Z_STRLEN_P(container) && Z_STRVAL_P(container)[offset->value.lval] != '0') {
                     result = 1;
                 }
             }
@@ -385,11 +385,11 @@ The proof is that you use PHP, you have some PHP code in production, and it just
         FREE_OP2();
     }
 
-    Z_TYPE(EX_T(opline-&gt;result.var).tmp_var) = IS_BOOL;
-    if (opline-&gt;extended_value &amp; ZEND_ISSET) {
-        Z_LVAL(EX_T(opline-&gt;result.var).tmp_var) = result;
+    Z_TYPE(EX_T(opline->result.var).tmp_var) = IS_BOOL;
+    if (opline->extended_value & ZEND_ISSET) {
+        Z_LVAL(EX_T(opline->result.var).tmp_var) = result;
     } else {
-        Z_LVAL(EX_T(opline-&gt;result.var).tmp_var) = !result;
+        Z_LVAL(EX_T(opline->result.var).tmp_var) = !result;
     }
 
     FREE_OP1_VAR_PTR();
@@ -398,7 +398,7 @@ The proof is that you use PHP, you have some PHP code in production, and it just
     ZEND_VM_NEXT_OPCODE();
 }</code></pre>
 <p>Appart from many decision points (many ifs structures), the real hot computing algorithm here can be summed up in one line :</p>
-<pre><code>if (offset-&gt;value.lval &gt;= 0 &amp;&amp; offset-&gt;value.lval &lt; Z_STRLEN_P(container))</code></pre>
+<pre><code>if (offset->value.lval >= 0 && offset->value.lval < Z_STRLEN_P(container))</code></pre>
 <p>If the offset is positive (you did not mean <code>isset($a[-42])</code>), and it is stricly less than the length of the string,
 result will be passed 1, and then the resulting operation will be the boolean TRUE.
 Don't worry about the length computation : <code>Z_STRLEN_P(container)</code> will not compute anything. Remember that PHP already knows the length
@@ -414,7 +414,7 @@ string is not the '0' character.
 <code>empty()</code> and <code>isset()</code> lead to the exact same code beeing run, with just one little tiny diff somewhere, so <code>empty()</code> will have the exact same performance impact that <code>isset()</code> (assuming you use both with the same parameter)</p>
 <h2 id="what-can-opcache-do-for-us">What can OPCache do for us ?<a href="#what-can-opcache-do-for-us" class="anchor">#</a></h2>
 <p>Short answer : Nothing.</p>
-<p>OPCache optimizes your code. I talked about this many times in worldwide conferences, you may fetch my slides at <a href="http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals"><a href="http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals">http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals</a> for example.</p>
+<p>OPCache optimizes your code. I talked about this many times in worldwide conferences, you may fetch my slides at <a href="http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals"></a><a href="http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals">http://fr.slideshare.net/jpauli/yoopee-cache-op-cache-internals</a> for example.</p>
 <p>We've been asked on github if we could add an optimization pass that would switch <code>strlen()</code> to <code>isset()</code> : That's not possible.</p>
 <p>Remember that OPCache optimization passes act on the OPArray before storing it into shared memory. <em>This happens at compile time and not
 at runtime</em>. But at compile time, how can we know that the variable you pass to <code>strlen()</code> is a string ? We can't. That's the PHP problem,
@@ -422,7 +422,7 @@ and that's a part of how HHVM/Hack solved it. If we could type our variables in 
 much more things in compiler passes (as well as into the VM).
 Because of the dynamic nature of PHP, nearly nothing is known at compile time. The only thing OPCache can optimize are static, compile-time-known things.
 For example, this can be optimized by OPCache :</p>
-<pre><code>if (strlen("foo") &gt; 8) {
+<pre><code>if (strlen("foo") > 8) {
  /* do domething */
 } else {
  /* do something else */
@@ -430,7 +430,7 @@ For example, this can be optimized by OPCache :</p>
 <p>At compile time, we know here that "foo"'s string length is not above 8, and we can trash all the if() opcodes as well as the "true" part of
 the if, and just run the "else" part.
 But here :</p>
-<pre><code>if (strlen($a) &gt; 8) {
+<pre><code>if (strlen($a) > 8) {
  /* do domething */
 } else {
  /* do something else */
@@ -468,11 +468,11 @@ both useless and silly. Once more : profiling will tell you that.</p>
 <p>So, about function calls, well... A language needs function calls ;-)
 However, there are little tricks that can be used to prevent some function calls, because the information is available elsewhere.
 Like :</p>
-<pre><code>php_version() =&gt; use the PHP_VERSION constant
-php_uname() =&gt; use the PHP_OS constant
-php_sapi_name() =&gt; use the PHP_SAPI constant
-time() =&gt; read $_SERVER['REQUEST_TIME']
-session_id() =&gt; use the SID constant</code></pre>
+<pre><code>php_version() => use the PHP_VERSION constant
+php_uname() => use the PHP_OS constant
+php_sapi_name() => use the PHP_SAPI constant
+time() => read $_SERVER['REQUEST_TIME']
+session_id() => use the SID constant</code></pre>
 <p>The above examples are sometimes not 100% equivalent, and I let you read the documentation to find the differences.</p>
 <p>Ah ho yes, let me tell it because we still see such things nowadays (uncommonly) : prevent silly things, like :</p>
 <pre><code>function foo() {
@@ -499,10 +499,8 @@ the one a better suitable language for such tasks will show, aka Java, Go or pro
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

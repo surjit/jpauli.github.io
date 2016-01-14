@@ -193,7 +193,6 @@ We will see how loops are implemented later, for the moment, just think about a 
 
 Here is an easy example to show the main line :
 
-	<?php
 	$a = 8;
 	$b = 'foo';
 	echo $a + $b;
@@ -312,7 +311,6 @@ The OPArray structure is the result that the Zend compiler gives when it compile
 
 Ok, back to the point, let's see what our OPArray looks like when it comes to compile our simple little example :
 
-	<?php
 	$a = 8;
 	$b = 'foo';
 	echo $a + $b;
@@ -346,7 +344,6 @@ This was an explanation for IS_CV, but the same applies for every specialized ty
 
 Now I'm going to detail when the PHP compiler will use each type, for a very simple addition case :
 
-	<?php
 	$a + $b; // IS_CV + IS_CV
 	1 + $a;  // IS_CONST + IS_CV
 	foo() + 3 // IS_VAR + IS_CONST
@@ -460,7 +457,6 @@ Passing *zend_vm_def.h* to the *zend_vm_gen.php* script, will result into a new 
 
 So, the specialized handler will be run depending on the op1 and op2 types, for example :
 
-	<?php
 	$a + 2;  /* IS_CV + IS_CONST */
 	
 	/* ZEND_ADD_SPEC_CV_CONST_HANDLER() will be run in the VM */
@@ -665,7 +661,6 @@ CALL is the default strategy for the Zend Executor dispatch loop, because its th
 
 What happens when you use an *if* statement in PHP ? It is easy : instead of using ZEND_VM_NEXT_OPCODE() and linearly running each OPCode one after one - which prevents us from taking control over the executor path, and thus to implement ifs or loops - we just **jump** to a specific OPCode.
 
-	<?php
 	$a = 8;
 	if ($a == 9) {
 		echo "foo";
@@ -712,8 +707,6 @@ However, if you run your code into loops, with thousands of iteration, you will 
 
 We can read so many codes like this nowadays :
 
-	<?php
-	
 	$foo = 'foo';
 	$bar = 'bar';
 	
@@ -736,8 +729,6 @@ That means that the engine will have to both create some space for a string into
 
 Why not turn your code to something much like this ? :
 
-	<?php
-	
 	$foo = 'foo';
 	$bar = 'bar';
 	
@@ -803,7 +794,6 @@ Simply said :
 
 Now you got it : never use `define()` to define compile-time known constants (basically, every constant you'll happen to manipulate).
 
-	<?php
 	define('FOO', 'foo');
 	echo FOO;
 
@@ -825,8 +815,6 @@ However, [I already blogged on the heaviness of function calls into the engine](
 
 Look at the following involving `const` this time :
 
-	<?php
-	
 	const FOO = 'foo';
 	echo FOO;
 
@@ -845,15 +833,12 @@ There are however little glitches - which are logical, but still - about `const`
 
 That means that you can't do tings like that with `const`, but you may do with `define()` :
 
-	<?php
-	
 	if (foo()) {
 		const FOO = 'foo'; /* A compiler rule disallows that */
 	}
 
 Nor you may write :
 
-	<?php
 	$a = 'FOO';
 	
 	const $a = 'foo';
@@ -868,8 +853,6 @@ Prevent calling a function which name is dynamic ( != IS_CONST). When you make a
 
 Have a look :
 
-	<?php
-	
 	function foo() { }
 	foo();
 
@@ -885,8 +868,6 @@ There is here just a DO_FCALL OPCode, that will call to run the function foo()'s
 
 Let's now see a dynamic function call :
 
-	<?php
-	
 	function foo() { }
 	$a = 'foo';
 	$a();
@@ -986,8 +967,6 @@ Here again, simple words : When class A extends B, you'd better for performances
 
 Let's demonstrates :
 
-	<?php
-	
 	class Bar { }
 	class Foo extends Bar { }
 
@@ -1005,7 +984,6 @@ The compiler has done the job (and **declaring a class is really a heavy task fo
 
 So, declaring classes in PHP is very light in term of execution, until you move the order of declarations :
 
-	<?php
 	class Foo extends Bar { }
 	class Bar { }
 	
@@ -1027,8 +1005,6 @@ Here, like always, we suffer from the very dynamic nature of PHP, allowing to us
 
 Still not convinced ?
 
-	<?php
-	
 	class Foo { }
 	
 	compiled vars:  none
@@ -1039,7 +1015,6 @@ Still not convinced ?
 
 Nothing to do at runtime, like we already did demonstrate. Let's add a little bit of dynamism into that :
 
-	<?php
 	if ($a) {
 		class Foo  { }
 	}

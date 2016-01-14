@@ -159,7 +159,7 @@ mysqli is a nice extension, really. Nowadays, everybody uses PDO, the main argum
 
 First of all, mysqli has always been blamed for not generating exceptions but PHP errors. This is wrong.
 
-	<?php
+	
 	mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 	try {
@@ -176,7 +176,7 @@ You see ?
 
 mysqli can even tell you when you miss an index :
 
-	<?php
+	
 	mysqli_report(MYSQLI_REPORT_INDEX);
 	$db = mysqli_connect('myserver', 'myuser', 'secret', 'my_database');
 

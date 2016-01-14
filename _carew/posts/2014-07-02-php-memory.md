@@ -368,7 +368,6 @@ As most of dynamic allocation request from PHP go through the ZendMM layer, it i
 To know PHP dynamic memory usage at a given moment, `memory_get_usage()` may be used. This function returns the size used into the allocated segments. This means that it is less than the real usage of PHP.
 To know the real usage, aka the memory to fit the segments in it, pass 1 to the function : `memory_get_usage(1)`;
 
-	<?php
 	ini_set('memory_limit', -1); // unlimited memory
 	 
 	function show_memory($real = false) {
@@ -418,7 +417,7 @@ We then create a 10Mb string, so the memory consumption raises to 10865.88Kb and
 
 > ZEND_MM_SEG_SIZE must obviously be power-of-two aligned
 
-	<?php
+	
 	ini_set('memory_limit', -1); // unlimited memory
 	 
 	function get_mem_stats() {
@@ -446,7 +445,7 @@ We then create a 10Mb string, so the memory consumption raises to 10865.88Kb and
 We can then say that the more tiny the segments are, the more the heap close to real memory usage (economical) but the more often it has to create segments.
 This is why, by default, the segment size is 256Kb. With such a value, ZendMM will have to allocate few segments to fit the needs, which are usually around 5Mb. Sure, a framework based app (much more greedy in memory) may benefit from a tunning of the allocator. Look at that :
 
-	<?php
+	
 	get_mem_stats();
 	
 	/* This is the date component from ZF1. This class is known beeing huge
@@ -541,7 +540,7 @@ We're gonna trace every dynamic memory allocation from a PHP process, just to ha
 
 Here is the very simple script we'll benchmark :
 
-	<?php
+	
 	echo "hello world";
 
 With such a script, there is no chance we use lots of memory from PHP land, as echoing a tiny string is something trivial for memory usage

@@ -339,7 +339,7 @@ If we continue analyzing the compiler, we'll notice that it does the same thing 
 
 Here is what the string-related memory layout of some PHP script could look like :
 
-	<?php
+	
 	class Bar {
 		const FOO = "Bar";
 		public function foo($var = "foo") {

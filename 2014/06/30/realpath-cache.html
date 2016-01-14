@@ -68,8 +68,8 @@ Whenever you use relative paths, such as <em>"../hey/./you/../foobar"</em>, you 
 those full paths to file entities (Unix sense of "file", so a true file of any type or a directory or a link).</p>
 <p>Usually, for relative paths, you're gonna call the <a href="http://repo.or.cz/w/glibc.git/blob/edea402804bce917cfd7cd1af76212e6364c23db:/stdlib/canonicalize.c#l43">realpath() C function</a>. As you can see, <a href="http://repo.or.cz/w/glibc.git/blob/edea402804bce917cfd7cd1af76212e6364c23db:/stdlib/canonicalize.c#l161">it will lead to</a> a stat() system call.</p>
 <p>Calling stat() is heavy, first because this is a system call, needing a Kernel trap and a context switch, and also because it most likely asks the disk about metadata.
-The kernel source for stat() is at <a href="http://lxr.free-electrons.com/source/fs/stat.c#L190"><a href="http://lxr.free-electrons.com/source/fs/stat.c#L190">http://lxr.free-electrons.com/source/fs/stat.c#L190</a>. Not surprinsingly, it leads to a FileSystem call (inode-&gt;getattr()).
-Usually, the kernel uses <a href="http://www.faqs.org/docs/linux_admin/buffer-cache.html">its buffer caches</a>, so the impact is really 
+The kernel source for stat() is at <a href="http://lxr.free-electrons.com/source/fs/stat.c#L190"></a><a href="http://lxr.free-electrons.com/source/fs/stat.c#L190">http://lxr.free-electrons.com/source/fs/stat.c#L190</a>. Not surprinsingly, it leads to a FileSystem call (inode->getattr()).
+Usually, the kernel uses <a href="http://www.faqs.org/docs/linux_admin/buffer-cache.html">its buffer caches</a>, so the impact is really
 tiny, but the buffer cache on a very busy server may not contain your information, thus an IO, which is something you'd prefer
 preventing as much as possible.</p>
 <h2 id="what-php-does">What PHP does ?<a href="#what-php-does" class="anchor">#</a></h2>
@@ -130,8 +130,7 @@ Welcome <code>clearstatcache(true)</code>.
 The true parameter is very important, it is named <em>$clear_realpath_cache</em>, so yes, obviously this is what we want to do.</p>
 <h2 id="an-example">An example<a href="#an-example" class="anchor">#</a></h2>
 <p>So here is an example.</p>
-<pre><code>&lt;?php
-$f = @file_get_contents('/tmp/bar.php');
+<pre><code>$f = @file_get_contents('/tmp/bar.php');
 
 echo "hello";
 
@@ -139,59 +138,59 @@ var_dump(realpath_cache_get());</code></pre>
 <p>And here is the result :</p>
 <pre><code>hello
 array(5) {
-  ["/home/julien.pauli/www/realpath_example.php"]=&gt;
+  ["/home/julien.pauli/www/realpath_example.php"]=>
   array(4) {
-    ["key"]=&gt;
+    ["key"]=>
     float(1.7251638834424E+19)
-    ["is_dir"]=&gt;
+    ["is_dir"]=>
     bool(false)
-    ["realpath"]=&gt;
+    ["realpath"]=>
     string(43) "/home/julien.pauli/www/realpath_example.php"
-    ["expires"]=&gt;
+    ["expires"]=>
     int(1404137986)
   }
-  ["/home"]=&gt;
+  ["/home"]=>
   array(4) {
-    ["key"]=&gt;
+    ["key"]=>
     int(4353355791257440477)
-    ["is_dir"]=&gt;
+    ["is_dir"]=>
     bool(true)
-    ["realpath"]=&gt;
+    ["realpath"]=>
     string(5) "/home"
-    ["expires"]=&gt;
+    ["expires"]=>
     int(1404137986)
   }
-  ["/home/julien.pauli"]=&gt;
+  ["/home/julien.pauli"]=>
   array(4) {
-    ["key"]=&gt;
+    ["key"]=>
     int(159282770203332178)
-    ["is_dir"]=&gt;
+    ["is_dir"]=>
     bool(true)
-    ["realpath"]=&gt;
+    ["realpath"]=>
     string(18) "/home/julien.pauli"
-    ["expires"]=&gt;
+    ["expires"]=>
     int(1404137986)
   }
-  ["/tmp"]=&gt;
+  ["/tmp"]=>
   array(4) {
-    ["key"]=&gt;
+    ["key"]=>
     float(1.6709564980243E+19)
-    ["is_dir"]=&gt;
+    ["is_dir"]=>
     bool(true)
-    ["realpath"]=&gt;
+    ["realpath"]=>
     string(4) "/tmp"
-    ["expires"]=&gt;
+    ["expires"]=>
     int(1404137986)
   }
-  ["/home/julien.pauli/www"]=&gt;
+  ["/home/julien.pauli/www"]=>
   array(4) {
-    ["key"]=&gt;
+    ["key"]=>
     int(5178407966190555102)
-    ["is_dir"]=&gt;
+    ["is_dir"]=>
     bool(true)
-    ["realpath"]=&gt;
+    ["realpath"]=>
     string(22) "/home/julien.pauli/www"
-    ["expires"]=&gt;
+    ["expires"]=>
     int(1404137986)</code></pre>
 <p>What we can see, is that the full path to my example PHP file has been resolved, parts by parts.
 Then, as <em>/tmp/bar.php</em> doesn't exist on my disk, this entry is obviously missing from the cache. However, we can see that PHP
@@ -222,10 +221,8 @@ I experienced this solution on production, and it is rock solid !</p>
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

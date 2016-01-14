@@ -79,7 +79,7 @@ Obviously, as PHP doesn't support Unicode natively, the string stores each C ASC
 } zvalue_value;</code></pre>
 <p>I lied a little bit when I said PHP doesn't manage strings using its own structure. In fact in PHP 5, a string is used in the <em>str</em> field of the zval (the PHP variable container).
 Graphically, this could give :</p>
-<p><img alt="strings_php5" src="../../../img/php-strings/strings_php5.png"></p>
+<p><img src="../../../img/php-strings/strings_php5.png" alt="strings_php5"></p>
 <h3 id="problems-in-the-php-5-way">Problems in the PHP 5 way<a href="#problems-in-the-php-5-way" class="anchor">#</a></h3>
 <p>This model has several problems, some are addressed in later PHP 5 versions, and others in the new PHP 7 implementation we'll talk about later.</p>
 <h4 id="integer-size">Integer size<a href="#integer-size" class="anchor">#</a></h4>
@@ -119,7 +119,7 @@ It can't keep the pointer, because the above layer is free to free the pointer w
     char *name = NULL;
     int name_len, argc = ZEND_NUM_ARGS();
 
-    if (zend_parse_parameters(argc TSRMLS_CC, "|s", &amp;name, &amp;name_len) == FAILURE) {
+    if (zend_parse_parameters(argc TSRMLS_CC, "|s", &name, &name_len) == FAILURE) {
         return;
     }
 
@@ -174,7 +174,7 @@ Let's see that together.</p>
     CG(interned_strings_snapshot_top) = CG(interned_strings_start);
     CG(interned_strings_end) = CG(interned_strings_start) + size;
 
-    zend_hash_init(&amp;CG(interned_strings), 0, NULL, NULL, 1);
+    zend_hash_init(&CG(interned_strings), 0, NULL, NULL, 1);
 
     CG(interned_strings).nTableMask = CG(interned_strings).nTableSize - 1;
     CG(interned_strings).arBuckets = (Bucket **) pecalloc(CG(interned_strings).nTableSize, sizeof(Bucket *), CG(interned_strings).persistent);
@@ -182,7 +182,7 @@ Let's see that together.</p>
 <p>What you first must spot, is that the interned string buffer is 1Mb large (1024*1024) and cannot be changed by the PHP user (INI setting). Effectively, when this buffer will be full, it will NOT be resized, and from that point the interned strings API will behave like if there is no interned strings : it will lead us to having malloc()ed our strings.</p>
 <p>Now, to create an interned string, we internally use <code>zend_new_interned_string()</code> , and not <code>malloc()</code> or <code>strdup()</code> or anything else :</p>
 <pre><code>#define IS_INTERNED(s) \
-    (((s) &gt;= CG(interned_strings_start)) &amp;&amp; ((s) &lt; CG(interned_strings_end)))
+    (((s) >= CG(interned_strings_start)) && ((s) < CG(interned_strings_end)))
 
 static const char *zend_new_interned_string_int(const char *arKey, int nKeyLength, int free_src TSRMLS_DC)
 {
@@ -195,25 +195,25 @@ static const char *zend_new_interned_string_int(const char *arKey, int nKeyLengt
     }
 
     h = zend_inline_hash_func(arKey, nKeyLength);
-    nIndex = h &amp; CG(interned_strings).nTableMask;
+    nIndex = h & CG(interned_strings).nTableMask;
     p = CG(interned_strings).arBuckets[nIndex];
     while (p != NULL) {
-        if ((p-&gt;h == h) &amp;&amp; (p-&gt;nKeyLength == nKeyLength)) {
-            if (!memcmp(p-&gt;arKey, arKey, nKeyLength)) {
+        if ((p->h == h) && (p->nKeyLength == nKeyLength)) {
+            if (!memcmp(p->arKey, arKey, nKeyLength)) {
                 if (free_src) {
                     efree((void *)arKey);
                 }
-                return p-&gt;arKey;
+                return p->arKey;
             }
         }
-        p = p-&gt;pNext;
+        p = p->pNext;
     }
     /* ... ... */</code></pre>
 <p>As you can see, this API immediately returns the string you want to intern, if this latter is already in the interned string buffer.
 If not, it will lookup the interned string hashtable to find if the same string is stored into it. This is a heavy operation, as the hashtable needs to be browsed, and the string needs to be per-byte compared. Both operations will likely invalidate your L1 CPU cache, and possibly your L2 cache as well ; but we only create interned strings when this is necessary and will save performances later (heavilly used string). This is a tradeoff between the work needed to create the string (heavy) and the later work done to fetch back this string and use it (light, and memory fair).
 If the same string is found in the hashtable, this latter pointer is returned and the original string buffer can also be freed by the API if we asked it to, passing '1' as last parameter.</p>
 <p>Let's continue :</p>
-<pre><code>if (CG(interned_strings_top) + ZEND_MM_ALIGNED_SIZE(sizeof(Bucket) + nKeyLength) &gt;=
+<pre><code>if (CG(interned_strings_top) + ZEND_MM_ALIGNED_SIZE(sizeof(Bucket) + nKeyLength) >=
     CG(interned_strings_end)) {
     /* no memory */
     return arKey;
@@ -224,19 +224,19 @@ Let's end :</p>
 CG(interned_strings_top) += ZEND_MM_ALIGNED_SIZE(sizeof(Bucket) + nKeyLength); /* move up the border */
 h = zend_inline_hash_func(arKey, nKeyLength);
 
-p-&gt;arKey = (char*)(p+1);
-memcpy((char*)p-&gt;arKey, arKey, nKeyLength); /* copy the string into the interned string buffer */
+p->arKey = (char*)(p+1);
+memcpy((char*)p->arKey, arKey, nKeyLength); /* copy the string into the interned string buffer */
 if (free_src) {
     efree((void *)arKey); /* free the original string */
 }
-p-&gt;nKeyLength = nKeyLength;
-p-&gt;h = h;
-p-&gt;pData = &amp;p-&gt;pDataPtr;
-p-&gt;pDataPtr = p;
+p->nKeyLength = nKeyLength;
+p->h = h;
+p->pData = &p->pDataPtr;
+p->pDataPtr = p;
 
 /* ... ... */
 
-return p-&gt;arKey; /* return the interned string */</code></pre>
+return p->arKey; /* return the interned string */</code></pre>
 <p>And finally, the string is duplicated (<code>memcpy()</code>) from the pointer you provided (<em>arKey</em>), into the HashTable, which Bucket will be allocated from the interned string buffer itself.</p>
 <p>As you can see, there is nothing really complicated, just some clever tricks to make any future manipulation of the related string more efficient.
 For example, the string hash (<em>h</em> variable) is computed every time we intern a string. This hash will be needed any time the string is used as a key into a hashtable, and this is very likely to happen, so we prefer eating some more CPU cycles now (by computing the hash), than later at runtime when performances will be critical to the user.</p>
@@ -261,10 +261,10 @@ For this, we don't use <code>efree()</code> (the free() equivalent in PHP's sour
 </blockquote>
 <p>Have you seen how cleverly interned strings are stored into memory ?
 Here is a picture of what the memory layout could look :</p>
-<p><img alt="interned_string_buffer_layout_php5" src="../../../img/php-strings/interned_string_buffer_layout.png"></p>
+<p><img src="../../../img/php-strings/interned_string_buffer_layout.png" alt="interned_string_buffer_layout_php5"></p>
 <p>Interned strings are stored into a well known bound buffer, so to check if a pointer holds an interned string, we just have to check if its address is inside the interned string buffer bounds :</p>
 <pre><code>#define IS_INTERNED(s) \
-    (((s) &gt;= CG(interned_strings_start)) &amp;&amp; ((s) &lt; CG(interned_strings_end)))</code></pre>
+    (((s) >= CG(interned_strings_start)) && ((s) < CG(interned_strings_end)))</code></pre>
 <p>This is highly performant, as looking up a HashTable any time we want to know if a string is interned or not, is just a no-go for performance, and would slow down the language a lot, as strings are used everywhere into PHP's heart.</p>
 <p>So, how to really free an interned string ? You don't do that as a PHP extension writer. The engine will free the whole interned string buffer at once, once it shuts down (end of PHP life, after having treated several requests) :</p>
 <pre><code>void zend_interned_strings_dtor(TSRMLS_D)
@@ -272,7 +272,7 @@ Here is a picture of what the memory layout could look :</p>
     free(CG(interned_strings).arBuckets);
     free(CG(interned_strings_start));
 }</code></pre>
-<p>This is once more highly optimized, because the buffer is contiguous address, and the free operation will destroy every piece of interned string at once, instead of one free operation per string ( like in PHP &lt; 5.4).</p>
+<p>This is once more highly optimized, because the buffer is contiguous address, and the free operation will destroy every piece of interned string at once, instead of one free operation per string ( like in PHP < 5.4).</p>
 <p>For request-bound interned strings, the border of the string buffer is simply snapshoted when a request is about to come, and restored when the request has gone, thus, every string created between both operations (during a request) will be taken out of the buffer by simply moving the border of this latter (<em>CG(interned_strings_top)</em>).
 At the beginning of the request, we snapshot the upper border of the interned strings buffer :</p>
 <pre><code>static void zend_interned_strings_snapshot_int(TSRMLS_D)
@@ -287,14 +287,14 @@ At the beginning of the request, we snapshot the upper border of the interned st
 
     CG(interned_strings_top) = CG(interned_strings_snapshot_top);
 
-    for (i = 0; i &lt; CG(interned_strings).nTableSize; i++) {
+    for (i = 0; i < CG(interned_strings).nTableSize; i++) {
         p = CG(interned_strings).arBuckets[i];
-        while (p &amp;&amp; p-&gt;arKey &gt; CG(interned_strings_top)) {
+        while (p && p->arKey > CG(interned_strings_top)) {
             CG(interned_strings).nNumOfElements--;
-            if (p-&gt;pListLast != NULL) {
-                p-&gt;pListLast-&gt;pListNext = p-&gt;pListNext;
+            if (p->pListLast != NULL) {
+                p->pListLast->pListNext = p->pListNext;
             } else {
-                CG(interned_strings).pListHead = p-&gt;pListNext;
+                CG(interned_strings).pListHead = p->pListNext;
             }
             /* ... */
     }
@@ -305,23 +305,22 @@ At the beginning of the request, we snapshot the upper border of the interned st
     /* ... ... */
 
     new_class_entry = emalloc(sizeof(zend_class_entry));
-    new_class_entry-&gt;type = ZEND_USER_CLASS;
-    new_class_entry-&gt;name = zend_new_interned_string(Z_STRVAL(class_name-&gt;u.constant), Z_STRLEN(class_name-&gt;u.constant) + 1, 1 TSRMLS_CC);
-    new_class_entry-&gt;name_length = Z_STRLEN(class_name-&gt;u.constant);
+    new_class_entry->type = ZEND_USER_CLASS;
+    new_class_entry->name = zend_new_interned_string(Z_STRVAL(class_name->u.constant), Z_STRLEN(class_name->u.constant) + 1, 1 TSRMLS_CC);
+    new_class_entry->name_length = Z_STRLEN(class_name->u.constant);
 
     /* ... ... */</code></pre>
 <p>The code above is triggered when PHP compiles a user class, like <code>class Bar { }</code>
-Like you can read, the name of the class will be interned, <code>zend_new_interned_string()</code> is used. It is passed a pointer storing the name of the class as it comes from the parser (class_name-&gt;u.constant) , and it will return a new pointer to the same string, but interned. Also, the old pointer will be freed and will become invalid (1 is passed as last parameter to <code>zend_new_interned_string()</code>, which means "free the original pointer so that I don't have to do it myself").</p>
+Like you can read, the name of the class will be interned, <code>zend_new_interned_string()</code> is used. It is passed a pointer storing the name of the class as it comes from the parser (class_name->u.constant) , and it will return a new pointer to the same string, but interned. Also, the old pointer will be freed and will become invalid (1 is passed as last parameter to <code>zend_new_interned_string()</code>, which means "free the original pointer so that I don't have to do it myself").</p>
 <p>If we continue analyzing the compiler, we'll notice that it does the same thing for many concepts : function names, variable names, constant names, userland PHP strings and more advanced concepts, such as OPArray litterals.</p>
 <p>Here is what the string-related memory layout of some PHP script could look like :</p>
-<pre><code>&lt;?php
-class Bar {
+<pre><code>class Bar {
     const FOO = "Bar";
     public function foo($var = "foo") {
         return "var";
     }
 }</code></pre>
-<p><img alt="memory_layout_compiler" src="../../../img/php-strings/memory_layout_compiler.png"></p>
+<p><img src="../../../img/php-strings/memory_layout_compiler.png" alt="memory_layout_compiler"></p>
 <p>Each piece of string is effectively stored once and only once in memory, and they are all stored into the same contiguous buffer, and not sparsed everywhere in memory, improving CPU cache efficiency.</p>
 <h4 id="summary-of-interned-strings">Summary of interned strings<a href="#summary-of-interned-strings" class="anchor">#</a></h4>
 <p>Interned strings are a programmatic mechanism designed to store any piece of string (char *) only once in memory. This is a read-only, globally shared concept : one should not change an interned string (usually given as a <em>const char*</em> pointer to prevent that), nor free it.
@@ -354,7 +353,7 @@ You can read more about this <a href="http://jpauli.github.io/2015/03/05/opcache
 <li>It embeds a refcount : <em>gc</em></li>
 </ul><p>As length are typed on a <em>size_t</em> variable, they weight {platform size} bytes ! Whatever the platform. One of the PHP 5 problems is then solved : under a CPU64, string length will be 8 bytes (64 digits) for every platform (this is one of the definition of the C <em>size_t</em> type).</p>
 <p>The string is not stored into a <em>char*</em> but a <em>char[1]</em>, this is a C trick called a "struct hack" (look for that term if needed). That allows us to allocate the string buffer together with the <em>zend_string</em> buffer, and save one pointer along having a contiguous area of memory. Performances++</p>
-<p>Notice that now, strings embed by default their hash (<em>h</em>). So we compute the hash for a given string only once (usually at compile time), and never after that. In PHP, mainly before interned strings (&lt; 5.4), the same string hash was recomputed every time it is needed, that led to tons of CPU cycles burnt for nothing... Pre-computed hashes have pushed overall PHP performances.</p>
+<p>Notice that now, strings embed by default their hash (<em>h</em>). So we compute the hash for a given string only once (usually at compile time), and never after that. In PHP, mainly before interned strings (< 5.4), the same string hash was recomputed every time it is needed, that led to tons of CPU cycles burnt for nothing... Pre-computed hashes have pushed overall PHP performances.</p>
 <p>Strings are refcounted ! In PHP 7, strings are refcounted (as well as many other primitive types). That means that interned strings are still relevant, but less : PHP layers can now pass strings from one to the other, as strings are refcounted, we are plainly sure that noone will accidentaly free the string as this latter is still used elsewhere (until doing an error on purpose).</p>
 <p>This is the concept behind "reference counting" (search the term if needed) : we now count every place where a string is used (stored), so that it will be freed when nobody uses it anymore.</p>
 <p>Let's go back to our session module example. Here is its PHP 5 code recalled to you, followed by its PHP 7 code, just for the part managing strings (what we are looking after) :</p>
@@ -401,7 +400,7 @@ static zend_always_inline void zend_string_release(zend_string *s)
 {
     if (!ZSTR_IS_INTERNED(s)) {
         if (--GC_REFCOUNT(s) == 0) {
-            pefree(s, GC_FLAGS(s) &amp; IS_STR_PERSISTENT);
+            pefree(s, GC_FLAGS(s) & IS_STR_PERSISTENT);
         }
     }
 }</code></pre>
@@ -433,10 +432,8 @@ You can see some <a href="https://github.com/php/php-src/commit/f4cfaf36e23ca47d
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

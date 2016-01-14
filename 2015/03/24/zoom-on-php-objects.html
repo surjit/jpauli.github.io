@@ -75,7 +75,7 @@ internal design (the truth) scores :-)</p>
     public $c = ['some', 'values'];
 }
 
-for ($i=0; $i&lt;1000; $i++) {
+for ($i=0; $i<1000; $i++) {
     $m = memory_get_usage();
     ${'var'.$i} = new Foo;
     echo memory_get_usage() - $m"\n";
@@ -84,7 +84,7 @@ for ($i=0; $i&lt;1000; $i++) {
 between allocations.</p>
 <p>That are 262 bytes diff at every object creation (LP64). Creating an object of class Foo, plus creating a PHP variable to store the object into it, allocate 262 bytes in PHP's heap memory (LP64).</p>
 <p>Let's try now to turn this object into an equivalent array, some kind of :</p>
-<pre><code>for ($i=0; $i&lt;1000; $i++) {
+<pre><code>for ($i=0; $i<1000; $i++) {
     $m = memory_get_usage();
     ${'var'.$i} = [['some', 'values'], null, 'foobarstring'];
     echo memory_get_usage() - $m . "\n";
@@ -92,7 +92,7 @@ between allocations.</p>
 <p>The array embeds the same values : an array, a null and a foobar string.
 The difference between arrays creation is 1160 bytes (LP64) : that is something like 4 to 5 times more memory eaten.</p>
 <p>Let's do another quick bench :</p>
-<pre><code>$class = &lt;&lt;&lt;'CL'
+<pre><code>$class = <<<'CL'
 class Foo {
     public $a = "foobarstring";
     public $b;
@@ -214,7 +214,7 @@ That's a point why internal classes are more performant than user classes. (Only
 
 static int clean_non_persistent_class(zend_class_entry **ce TSRMLS_DC)
 {
-    return ((*ce)-&gt;type == ZEND_INTERNAL_CLASS) ? ZEND_HASH_APPLY_STOP : ZEND_HASH_APPLY_REMOVE;
+    return ((*ce)->type == ZEND_INTERNAL_CLASS) ? ZEND_HASH_APPLY_STOP : ZEND_HASH_APPLY_REMOVE;
 }</code></pre>
 <p>Note that even with an OPCode cache, like OPCache, class creation and destruction still happen at every request for user declared classes. OPCache only speeds up those two steps.</p>
 <blockquote>
@@ -236,10 +236,10 @@ Something like this :</p>
 class MyException extends Exception implements BarException { }
 
 try {
-    $foo-&gt;bar():
+    $foo->bar():
 } catch (BarException $e) { }</code></pre>
 <p>What is pitty here, is that nearly one kilobyte is used, just to declare the <em>BarException</em> interface. Exactly 912 bytes (LP64) :</p>
-<pre><code>$class = &lt;&lt;&lt;'CL'
+<pre><code>$class = <<<'CL'
 interface Bar { }
 CL;
 $m = memory_get_usage();
@@ -272,15 +272,15 @@ case ZEND_DECLARE_CLASS:
 {
     zend_abstract_info ai;
 
-    if ((ce-&gt;ce_flags &amp; ZEND_ACC_IMPLICIT_ABSTRACT_CLASS) &amp;&amp; !(ce-&gt;ce_flags &amp; ZEND_ACC_EXPLICIT_ABSTRACT_CLASS)) {
-        memset(&amp;ai, 0, sizeof(ai));
+    if ((ce->ce_flags & ZEND_ACC_IMPLICIT_ABSTRACT_CLASS) && !(ce->ce_flags & ZEND_ACC_EXPLICIT_ABSTRACT_CLASS)) {
+        memset(&ai, 0, sizeof(ai));
 
-        zend_hash_apply_with_argument(&amp;ce-&gt;function_table, (apply_func_arg_t) zend_verify_abstract_class_function, &amp;ai TSRMLS_CC);
+        zend_hash_apply_with_argument(&ce->function_table, (apply_func_arg_t) zend_verify_abstract_class_function, &ai TSRMLS_CC);
 
         if (ai.cnt) {
             zend_error(E_ERROR, "Class %s contains %d abstract method%s and must therefore be declared abstract or implement the remaining methods (" MAX_ABSTRACT_INFO_FMT MAX_ABSTRACT_INFO_FMT MAX_ABSTRACT_INFO_FMT ")",
-                ce-&gt;name, ai.cnt,
-                ai.cnt &gt; 1 ? "s" : "",
+                ce->name, ai.cnt,
+                ai.cnt > 1 ? "s" : "",
                 DISPLAY_ABSTRACT_FN(0),
                 DISPLAY_ABSTRACT_FN(1),
                 DISPLAY_ABSTRACT_FN(2)
@@ -309,19 +309,19 @@ Constants, attributes and functions are all refcounted, no real copies take plac
     /* ... ... */
 
     } else {
-        if (ce-&gt;num_interfaces &gt;= current_iface_num) { /* resize the vector if needed */
-            if (ce-&gt;type == ZEND_INTERNAL_CLASS) {
-                ce-&gt;interfaces = (zend_class_entry **) realloc(ce-&gt;interfaces, sizeof(zend_class_entry *) * (++current_iface_num));
+        if (ce->num_interfaces >= current_iface_num) { /* resize the vector if needed */
+            if (ce->type == ZEND_INTERNAL_CLASS) {
+                ce->interfaces = (zend_class_entry **) realloc(ce->interfaces, sizeof(zend_class_entry *) * (++current_iface_num));
             } else {
-                ce-&gt;interfaces = (zend_class_entry **) erealloc(ce-&gt;interfaces, sizeof(zend_class_entry *) * (++current_iface_num));
+                ce->interfaces = (zend_class_entry **) erealloc(ce->interfaces, sizeof(zend_class_entry *) * (++current_iface_num));
             }
         }
-        ce-&gt;interfaces[ce-&gt;num_interfaces++] = iface; /* Add the interface to the class */
+        ce->interfaces[ce->num_interfaces++] = iface; /* Add the interface to the class */
 
         /* Copy every constants from the interface constants table to the current class constants table */
-        zend_hash_merge_ex(&amp;ce-&gt;constants_table, &amp;iface-&gt;constants_table, (copy_ctor_func_t) zval_add_ref, sizeof(zval *), (merge_checker_func_t) do_inherit_constant_check, iface);
+        zend_hash_merge_ex(&ce->constants_table, &iface->constants_table, (copy_ctor_func_t) zval_add_ref, sizeof(zval *), (merge_checker_func_t) do_inherit_constant_check, iface);
         /* Copy every methods from the interface methods table to the current class methods table */
-        zend_hash_merge_ex(&amp;ce-&gt;function_table, &amp;iface-&gt;function_table, (copy_ctor_func_t) do_inherit_method, sizeof(zend_function), (merge_checker_func_t) do_inherit_method_check, ce);
+        zend_hash_merge_ex(&ce->function_table, &iface->function_table, (copy_ctor_func_t) do_inherit_method, sizeof(zend_function), (merge_checker_func_t) do_inherit_method_check, ce);
 
         do_implement_interface(ce, iface TSRMLS_CC);
         zend_do_inherit_interfaces(ce, iface TSRMLS_CC);
@@ -337,19 +337,19 @@ Constants, attributes and functions are all refcounted, no real copies take plac
 
 ZEND_API void function_add_ref(zend_function *function)
 {
-    if (function-&gt;type == ZEND_USER_FUNCTION) {
-        zend_op_array *op_array = &amp;function-&gt;op_array;
+    if (function->type == ZEND_USER_FUNCTION) {
+        zend_op_array *op_array = &function->op_array;
 
-        (*op_array-&gt;refcount)++;
-        if (op_array-&gt;static_variables) {
-            HashTable *static_variables = op_array-&gt;static_variables;
+        (*op_array->refcount)++;
+        if (op_array->static_variables) {
+            HashTable *static_variables = op_array->static_variables;
             zval *tmp_zval;
 
-            ALLOC_HASHTABLE(op_array-&gt;static_variables);
-            zend_hash_init(op_array-&gt;static_variables, zend_hash_num_elements(static_variables), NULL, ZVAL_PTR_DTOR, 0);
-            zend_hash_copy(op_array-&gt;static_variables, static_variables, (copy_ctor_func_t) zval_add_ref, (void *) &amp;tmp_zval, sizeof(zval *));
+            ALLOC_HASHTABLE(op_array->static_variables);
+            zend_hash_init(op_array->static_variables, zend_hash_num_elements(static_variables), NULL, ZVAL_PTR_DTOR, 0);
+            zend_hash_copy(op_array->static_variables, static_variables, (copy_ctor_func_t) zval_add_ref, (void *) &tmp_zval, sizeof(zval *));
         }
-        op_array-&gt;run_time_cache = NULL;
+        op_array->run_time_cache = NULL;
     }
 }</code></pre>
 <p>The function's OPArray is added a refcount, and every possible static variables declared in the function (which here is a method) is also copied, again also using <code>zval_add_ref</code>.</p>
@@ -427,36 +427,36 @@ The class itself has been compiled, and this latter eats memory; but that's for 
     ALLOCA_FLAG(use_heap)
 
     if (EXPECTED(key != NULL)) {
-        lc_method_name = Z_STRVAL(key-&gt;constant);
-        hash_value = key-&gt;hash_value;
+        lc_method_name = Z_STRVAL(key->constant);
+        hash_value = key->hash_value;
     } else {
         lc_method_name = do_alloca(method_len+1, use_heap);
         zend_str_tolower_copy(lc_method_name, method_name, method_len);
         hash_value = zend_hash_func(lc_method_name, method_len+1);
     }
     /* If the method is not found */
-    if (UNEXPECTED(zend_hash_quick_find(&amp;zobj-&gt;ce-&gt;function_table, lc_method_name, method_len+1, hash_value, (void **)&amp;fbc) == FAILURE)) {
+    if (UNEXPECTED(zend_hash_quick_find(&zobj->ce->function_table, lc_method_name, method_len+1, hash_value, (void **)&fbc) == FAILURE)) {
         if (UNEXPECTED(!key)) {
             free_alloca(lc_method_name, use_heap);
         }
-        if (zobj-&gt;ce-&gt;__call) { /* if the class has got a __call() handler */
-            return zend_get_user_call_function(zobj-&gt;ce, method_name, method_len); /* call the __call() handler */
+        if (zobj->ce->__call) { /* if the class has got a __call() handler */
+            return zend_get_user_call_function(zobj->ce, method_name, method_len); /* call the __call() handler */
         } else {
             return NULL; /* else return NULL, which will likely lead to a fatal error : method not found */
         }
     }
 
     /* Check access level */
-    if (fbc-&gt;op_array.fn_flags &amp; ZEND_ACC_PRIVATE) {
+    if (fbc->op_array.fn_flags & ZEND_ACC_PRIVATE) {
         zend_function *updated_fbc;
         updated_fbc = zend_check_private_int(fbc, Z_OBJ_HANDLER_P(object, get_class_entry)(object TSRMLS_CC), lc_method_name, method_len, hash_value TSRMLS_CC);
         if (EXPECTED(updated_fbc != NULL)) {
             fbc = updated_fbc;
         } else {
-            if (zobj-&gt;ce-&gt;__call) {
-                fbc = zend_get_user_call_function(zobj-&gt;ce, method_name, method_len);
+            if (zobj->ce->__call) {
+                fbc = zend_get_user_call_function(zobj->ce, method_name, method_len);
             } else {
-                zend_error_noreturn(E_ERROR, "Call to %s method %s::%s() from context '%s'", zend_visibility_string(fbc-&gt;common.fn_flags), ZEND_FN_SCOPE_NAME(fbc), method_name, EG(scope) ? EG(scope)-&gt;name : "");
+                zend_error_noreturn(E_ERROR, "Call to %s method %s::%s() from context '%s'", zend_visibility_string(fbc->common.fn_flags), ZEND_FN_SCOPE_NAME(fbc), method_name, EG(scope) ? EG(scope)->name : "");
             }
         }
     } else {
@@ -465,8 +465,8 @@ The class itself has been compiled, and this latter eats memory; but that's for 
 }</code></pre>
 <p>You may spot an interesting thing, look at the first lines :</p>
 <pre><code>if (EXPECTED(key != NULL)) {
-        lc_method_name = Z_STRVAL(key-&gt;constant);
-        hash_value = key-&gt;hash_value;
+        lc_method_name = Z_STRVAL(key->constant);
+        hash_value = key->hash_value;
     } else {
         lc_method_name = do_alloca(method_len+1, use_heap);
         /* Create a zend_copy_str_tolower(dest, src, src_length); */
@@ -479,8 +479,8 @@ The class itself has been compiled, and this latter eats memory; but that's for 
 $a = new Foo;
 $b = 'bar';
 
-$a-&gt;bar(); /* static call : good */
-$a-&gt;$b(); /* dynamic call : bad */</code></pre>
+$a->bar(); /* static call : good */
+$a->$b(); /* dynamic call : bad */</code></pre>
 <p>When the compiler compiles a function/method, it immediately lowercases it. The above function <code>BAR()</code> is turned into <code>bar()</code> by the compiler, when it adds the method to the class function table.</p>
 <blockquote>
 <p>The compiler turns every function/method name to lowercase when it compiles it. PHP really is case-insensible when we talk about functions/methods.</p>
@@ -490,11 +490,11 @@ The second call above however, is dynamic; the compiler knows nothing about "$b"
 <p>About <code>__call()</code>, it is not that bad about performances, there is however more work to do than calling an existing function though.</p>
 <h3 id="object-attributes-management">Object attributes management<a href="#object-attributes-management" class="anchor">#</a></h3>
 <p>Here is what happens :</p>
-<p><img alt="PHP-objects-and-class-attributes" src="../../../img/php-objects/PHP-objects-and-class-attributes.png"></p>
+<p><img src="../../../img/php-objects/PHP-objects-and-class-attributes.png" alt="PHP-objects-and-class-attributes"></p>
 <p>As you can see, when you create several objects of the same class, the engine will make every attribute point on the same pointer as the one defined into the class attributes.
 The class stores the attributes, not only its own static attributes - but also objects ones - for the life of the class : forever for internal classes, request bound lifetime for user classes. Creating an object does not involve creating its attributes, thus, that's a fast and memory saver approach.
 Only at the time an object is going to change one of its attribute, the engine will create a new one and affect it, assuming you change the $a attribute on the object Foo #2 :</p>
-<p><img alt="PHP-objects-cow" src="../../../img/php-objects/PHP-objects-cow.png"></p>
+<p><img src="../../../img/php-objects/PHP-objects-cow.png" alt="PHP-objects-cow"></p>
 <p>So creating an object, is in fact "just" creating a <em>zend_object</em> structure, which weight 32 bytes under LP64...</p>
 <pre><code>typedef struct _zend_object {
     zend_class_entry *ce;
@@ -508,15 +508,15 @@ Only at the time an object is going to change one of its attribute, the engine w
     zend_object_value retval;
 
     *object = emalloc(sizeof(zend_object));
-    (*object)-&gt;ce = class_type;
-    (*object)-&gt;properties = NULL;
-    (*object)-&gt;properties_table = NULL;
-    (*object)-&gt;guards = NULL;
+    (*object)->ce = class_type;
+    (*object)->properties = NULL;
+    (*object)->properties_table = NULL;
+    (*object)->guards = NULL;
 
     /* Add the object into the store */
     retval.handle = zend_objects_store_put(*object, (zend_objects_store_dtor_t) zend_objects_destroy_object, (zend_objects_free_object_storage_t) zend_objects_free_object_storage, NULL TSRMLS_CC);
 
-    retval.handlers = &amp;std_object_handlers;
+    retval.handlers = &std_object_handlers;
     return retval;
 }</code></pre>
 <p>Then, the engine creates the properties vector of our object :</p>
@@ -524,20 +524,20 @@ Only at the time an object is going to change one of its attribute, the engine w
 {
     int i;
 
-    if (class_type-&gt;default_properties_count) {
-        object-&gt;properties_table = emalloc(sizeof(zval*) * class_type-&gt;default_properties_count);
-        for (i = 0; i &lt; class_type-&gt;default_properties_count; i++) {
-            object-&gt;properties_table[i] = class_type-&gt;default_properties_table[i];
-            if (class_type-&gt;default_properties_table[i]) {
+    if (class_type->default_properties_count) {
+        object->properties_table = emalloc(sizeof(zval*) * class_type->default_properties_count);
+        for (i = 0; i < class_type->default_properties_count; i++) {
+            object->properties_table[i] = class_type->default_properties_table[i];
+            if (class_type->default_properties_table[i]) {
 #if ZTS
-                ALLOC_ZVAL( object-&gt;properties_table[i]);
-                MAKE_COPY_ZVAL(&amp;class_type-&gt;default_properties_table[i], object-&gt;properties_table[i]);
+                ALLOC_ZVAL( object->properties_table[i]);
+                MAKE_COPY_ZVAL(&class_type->default_properties_table[i], object->properties_table[i]);
 #else
-                Z_ADDREF_P(object-&gt;properties_table[i]);
+                Z_ADDREF_P(object->properties_table[i]);
 #endif
             }
         }
-        object-&gt;properties = NULL;
+        object->properties = NULL;
     }
 }</code></pre>
 <p>Like you can see, we allocate a pure C table/vector of <code>zval*</code> based on the object's class declared properties, and, in case of non thread safe PHP, we just add a refcount to the property, whereas using Zend thread safety (ZTS), we must deeply copy the zval.
@@ -574,33 +574,33 @@ struct _zend_class_entry {
         zval **default_properties_table; /* and here, we'll find $a, $b and $c with their default values */
         int default_properties_count; /* this will have the value of 3 : 3 properties */
         /* ... ... */</code></pre>
-<p>The <em>properties_infos</em> is a table that will both tell the object if the attribute it asks access for exists, and if it exists, what is its index number in the <em>object-&gt;properties</em> pure C array. Clever and fast way of accessing attributes.
-If the attribute doesn't exist, and if we try to write into it : we try to call <code>__set()</code> if possible, if not, we create a dynamic attribute, and this one will be stored into <em>object-&gt;property_table</em> field. If the attribute exists, we then check the visibility and scope access (public/protected/private).</p>
-<pre><code>property_info = zend_get_property_info_quick(zobj-&gt;ce, member, (zobj-&gt;ce-&gt;__set != NULL), key TSRMLS_CC);
+<p>The <em>properties_infos</em> is a table that will both tell the object if the attribute it asks access for exists, and if it exists, what is its index number in the <em>object->properties</em> pure C array. Clever and fast way of accessing attributes.
+If the attribute doesn't exist, and if we try to write into it : we try to call <code>__set()</code> if possible, if not, we create a dynamic attribute, and this one will be stored into <em>object->property_table</em> field. If the attribute exists, we then check the visibility and scope access (public/protected/private).</p>
+<pre><code>property_info = zend_get_property_info_quick(zobj->ce, member, (zobj->ce->__set != NULL), key TSRMLS_CC);
 
-if (EXPECTED(property_info != NULL) &amp;&amp;
-    ((EXPECTED((property_info-&gt;flags &amp; ZEND_ACC_STATIC) == 0) &amp;&amp;
-     property_info-&gt;offset &gt;= 0) ?
-        (zobj-&gt;properties ?
-            ((variable_ptr = (zval**)zobj-&gt;properties_table[property_info-&gt;offset]) != NULL) :
-            (*(variable_ptr = &amp;zobj-&gt;properties_table[property_info-&gt;offset]) != NULL)) :
-        (EXPECTED(zobj-&gt;properties != NULL) &amp;&amp;
-          EXPECTED(zend_hash_quick_find(zobj-&gt;properties, property_info-&gt;name, property_info-&gt;name_length+1, property_info-&gt;h, (void **) &amp;variable_ptr) == SUCCESS)))) {
+if (EXPECTED(property_info != NULL) &&
+    ((EXPECTED((property_info->flags & ZEND_ACC_STATIC) == 0) &&
+     property_info->offset >= 0) ?
+        (zobj->properties ?
+            ((variable_ptr = (zval**)zobj->properties_table[property_info->offset]) != NULL) :
+            (*(variable_ptr = &zobj->properties_table[property_info->offset]) != NULL)) :
+        (EXPECTED(zobj->properties != NULL) &&
+          EXPECTED(zend_hash_quick_find(zobj->properties, property_info->name, property_info->name_length+1, property_info->h, (void **) &variable_ptr) == SUCCESS)))) {
 /* ... ... */
 } else {
     zend_guard *guard = NULL;
-        if (zobj-&gt;ce-&gt;__set &amp;&amp; /* class has a __set() ? */
-        zend_get_property_guard(zobj, property_info, member, &amp;guard) == SUCCESS &amp;&amp;
-        !guard-&gt;in_set) {
+        if (zobj->ce->__set && /* class has a __set() ? */
+        zend_get_property_guard(zobj, property_info, member, &guard) == SUCCESS &&
+        !guard->in_set) {
         Z_ADDREF_P(object);
         if (PZVAL_IS_REF(object)) {
-            SEPARATE_ZVAL(&amp;object);
+            SEPARATE_ZVAL(&object);
         }
-        guard-&gt;in_set = 1; /* prevent circular setting */
+        guard->in_set = 1; /* prevent circular setting */
         if (zend_std_call_setter(object, member, value TSRMLS_CC) != SUCCESS) { /* call __set() */
         }
-        guard-&gt;in_set = 0;
-        zval_ptr_dtor(&amp;object);
+        guard->in_set = 0;
+        zval_ptr_dtor(&object);
     /* ... ... */</code></pre>
 <p>So, until you write to your object, its memory consumption will not vary. When you write to it, you start making it bigger, as it will retain the attributes you wrote into it, until it dies. Methods do not consume any memory related to the object, but they belong to the class.</p>
 <h2 id="objects-acting-as-references-thanks-to-the-object-store">Objects acting as references, thanks to the object store<a href="#objects-acting-as-references-thanks-to-the-object-store" class="anchor">#</a></h2>
@@ -619,7 +619,7 @@ However, objects borrow references behavior, as when you pass a variable which i
 <p>This is because in the zval you pass to the function, you don't pass an object precisely, but its unique identifier, that will serve to look it up into the global object store, thus effectively leading to the same object at the end.
 You can end up having 3 different zvals in memory, they can all store into them the same object handle, and then they will lead to the same object into memory.</p>
 <pre><code>object(MyClass)#1 (0) { } /* #1 is the object handle (number), it is unique */</code></pre>
-<p><img alt="PHP-objects-zvals" src="../../../img/php-objects/PHP-objects-zvals.png"></p>
+<p><img src="../../../img/php-objects/PHP-objects-zvals.png" alt="PHP-objects-zvals"></p>
 <p>So you carry in your variables the same object handle, and then it will lead to the same object.
 The <em>zend_object_store</em> takes care of memorizing objects only once in memory. The only way to write into the store, is to create a new object, weither with the <code>new</code> keyword, the <code>unserialize()</code> function, the reflection API or the <code>clone</code> keyword. Every other operation will never duplicate or create a new object into the store.</p>
 <pre><code>typedef struct _zend_objects_store {
@@ -660,12 +660,12 @@ As <code>$this</code> is "magical", appears and disappears when it has to, autom
 
 static zend_bool opline_is_fetch_this(const zend_op *opline TSRMLS_DC)
 {
-    if ((opline-&gt;opcode == ZEND_FETCH_W) &amp;&amp; (opline-&gt;op1_type == IS_CONST)
-        &amp;&amp; (Z_TYPE(CONSTANT(opline-&gt;op1.constant)) == IS_STRING)
-        &amp;&amp; ((opline-&gt;extended_value &amp; ZEND_FETCH_STATIC_MEMBER) != ZEND_FETCH_STATIC_MEMBER)
-        &amp;&amp; (Z_HASH_P(&amp;CONSTANT(opline-&gt;op1.constant)) == THIS_HASHVAL)
-        &amp;&amp; (Z_STRLEN(CONSTANT(opline-&gt;op1.constant)) == (sizeof("this")-1))
-        &amp;&amp; !memcmp(Z_STRVAL(CONSTANT(opline-&gt;op1.constant)), "this", sizeof("this"))) {
+    if ((opline->opcode == ZEND_FETCH_W) && (opline->op1_type == IS_CONST)
+        && (Z_TYPE(CONSTANT(opline->op1.constant)) == IS_STRING)
+        && ((opline->extended_value & ZEND_FETCH_STATIC_MEMBER) != ZEND_FETCH_STATIC_MEMBER)
+        && (Z_HASH_P(&CONSTANT(opline->op1.constant)) == THIS_HASHVAL)
+        && (Z_STRLEN(CONSTANT(opline->op1.constant)) == (sizeof("this")-1))
+        && !memcmp(Z_STRVAL(CONSTANT(opline->op1.constant)), "this", sizeof("this"))) {
         return 1;
     } else {
         return 0;
@@ -675,57 +675,57 @@ static zend_bool opline_is_fetch_this(const zend_op *opline TSRMLS_DC)
 <p>Now how is <code>$this</code> managed ?
 When you call a method - which is the only place where you are allowed to use <code>$this</code> - the compiler emits an <code>INIT_METHOD_CALL</code> OPCode.
 You can read <a href="http://jpauli.github.io/2015/01/22/on-php-function-calls.html">On PHP function calls</a> or <a href="http://jpauli.github.io/2015/02/05/zend-vm-executor.html">getting into the Zend execution engine</a> about OPCodes for functions.
-In the <code>INIT_METHOD_CALL</code>, the engine knows who is calling the method, for <code>$a-&gt;foo()</code> : it is <code>$a</code>.
+In the <code>INIT_METHOD_CALL</code>, the engine knows who is calling the method, for <code>$a->foo()</code> : it is <code>$a</code>.
 It then fetches <code>$a</code>'s value, and memorize it in a global space. Then, it calls the method, issuing a <code>DO_FCALL</code> OPCode. In this OPcode, we fetch back the value memorized (the object calling the method), and we assign it to the internally-global <code>$this</code> pointer : <code>EG(This)</code> :</p>
-<pre><code>if (fbc-&gt;type == ZEND_USER_FUNCTION || fbc-&gt;common.scope) {
+<pre><code>if (fbc->type == ZEND_USER_FUNCTION || fbc->common.scope) {
     should_change_scope = 1;
     EX(current_this) = EG(This);
     EX(current_scope) = EG(scope);
     EX(current_called_scope) = EG(called_scope);
     EG(This) = EX(object); /* fetch the object prepared in previous INIT_METHOD opcode and affect it to EG(This) */
-    EG(scope) = (fbc-&gt;type == ZEND_USER_FUNCTION || !EX(object)) ? fbc-&gt;common.scope : NULL;
-    EG(called_scope) = EX(call)-&gt;called_scope;
+    EG(scope) = (fbc->type == ZEND_USER_FUNCTION || !EX(object)) ? fbc->common.scope : NULL;
+    EG(called_scope) = EX(call)->called_scope;
 }</code></pre>
-<p>Now, when the method is called, if you use <code>$this</code> in its body to affect a variable or call a method, like <code>$this-&gt;a = 8</code>, that leads to the <code>ZEND_ASSIGN_OBJ</code> OPCode, that fetches back <code>$this</code> from <code>EG(This)</code>.</p>
+<p>Now, when the method is called, if you use <code>$this</code> in its body to affect a variable or call a method, like <code>$this->a = 8</code>, that leads to the <code>ZEND_ASSIGN_OBJ</code> OPCode, that fetches back <code>$this</code> from <code>EG(This)</code>.</p>
 <pre><code>static zend_always_inline zval **_get_obj_zval_ptr_ptr_unused(TSRMLS_D)
 {
     if (EXPECTED(EG(This) != NULL)) {
-        return &amp;EG(This);
+        return &EG(This);
     } else {
         zend_error_noreturn(E_ERROR, "Using $this when not in object context");
         return NULL;
     }
 }</code></pre>
-<p>In case you were using <code>$this</code> to issue a method call like <code>$this-&gt;foo()</code>, or to pass <code>$this</code> to another function call like <code>$this-&gt;foo($this);</code> the engine will try to fetch <code>$this</code> from the current symbol table, like it does for every standard variable.
+<p>In case you were using <code>$this</code> to issue a method call like <code>$this->foo()</code>, or to pass <code>$this</code> to another function call like <code>$this->foo($this);</code> the engine will try to fetch <code>$this</code> from the current symbol table, like it does for every standard variable.
 But this one has been specially prepared, when the current function stack frame has been built :</p>
-<pre><code>if (op_array-&gt;this_var != -1 &amp;&amp; EG(This)) {
-     Z_ADDREF_P(EG(This));
+<pre><code>if (op_array->this_var != -1 && EG(This)) {
+    Z_ADDREF_P(EG(This));
     if (!EG(active_symbol_table)) {
-        EX_CV(op_array-&gt;this_var) = (zval **) EX_CV_NUM(execute_data, op_array-&gt;last_var + op_array-&gt;this_var);
-        *EX_CV(op_array-&gt;this_var) = EG(This);
+        EX_CV(op_array->this_var) = (zval **) EX_CV_NUM(execute_data, op_array->last_var + op_array->this_var);
+        *EX_CV(op_array->this_var) = EG(This);
     } else {
-        if (zend_hash_add(EG(active_symbol_table), "this", sizeof("this"), &amp;EG(This), sizeof(zval *), (void **) EX_CV_NUM(execute_data, op_array-&gt;this_var))==FAILURE) {
+        if (zend_hash_add(EG(active_symbol_table), "this", sizeof("this"), &EG(This), sizeof(zval *), (void **) EX_CV_NUM(execute_data, op_array->this_var))==FAILURE) {
             Z_DELREF_P(EG(This));
         }
     }
 }</code></pre>
 <p>Last thing : the scopes.
 When we call a method, the engine changes the scope :</p>
-<pre><code>if (fbc-&gt;type == ZEND_USER_FUNCTION || fbc-&gt;common.scope) {
+<pre><code>if (fbc->type == ZEND_USER_FUNCTION || fbc->common.scope) {
     /* ... ... */
-    EG(scope) = (fbc-&gt;type == ZEND_USER_FUNCTION || !EX(object)) ? fbc-&gt;common.scope : NULL;
+    EG(scope) = (fbc->type == ZEND_USER_FUNCTION || !EX(object)) ? fbc->common.scope : NULL;
     /* ... ... */
 }</code></pre>
 <p><code>EG(scope)</code> is of type <code>zend_class_entry</code> : this is the class the method you ask for belongs to, and this one will be used for whatever object operation you will now perform into the method body; when the engine checks the visibility :</p>
 <pre><code>static zend_always_inline int zend_verify_property_access(zend_property_info *property_info, zend_class_entry *ce TSRMLS_DC)
 {
-    switch (property_info-&gt;flags &amp; ZEND_ACC_PPP_MASK) {
+    switch (property_info->flags & ZEND_ACC_PPP_MASK) {
         case ZEND_ACC_PUBLIC:
             return 1;
         case ZEND_ACC_PROTECTED:
-            return zend_check_protected(property_info-&gt;ce, EG(scope));
+            return zend_check_protected(property_info->ce, EG(scope));
         case ZEND_ACC_PRIVATE:
-            if ((ce==EG(scope) || property_info-&gt;ce == EG(scope)) &amp;&amp; EG(scope)) {
+            if ((ce==EG(scope) || property_info->ce == EG(scope)) && EG(scope)) {
                 return 1;
             } else {
                 return 0;
@@ -741,14 +741,14 @@ When we call a method, the engine changes the scope :</p>
 
     public function foo(A $obj)
     {
-        $this-&gt;a = 'foo';
-        $obj-&gt;a  = 'bar'; /* yes, this is possible */
+        $this->a = 'foo';
+        $obj->a  = 'bar'; /* yes, this is possible */
     }
 }
 
 $a = new A;
 $b = new A;
-$a-&gt;foo($b);</code></pre>
+$a->foo($b);</code></pre>
 <p>This strangeness has lead to many bugs reported by users, but that's the rule in PHP object model : we don't actually define an object based scope, but a class based scope.
 So in a class "Foo", you can play with every private of every other eventual "Foo" , not only yourself, like the above example demonstrates.</p>
 <blockquote>
@@ -767,19 +767,19 @@ The rule is clear into the source code :</p>
     zend_try {
         int symbols;
         do {
-            symbols = zend_hash_num_elements(&amp;EG(symbol_table));
-            zend_hash_reverse_apply(&amp;EG(symbol_table), (apply_func_t) zval_call_destructor TSRMLS_CC);
-        } while (symbols != zend_hash_num_elements(&amp;EG(symbol_table)));
-        zend_objects_store_call_destructors(&amp;EG(objects_store) TSRMLS_CC);
+            symbols = zend_hash_num_elements(&EG(symbol_table));
+            zend_hash_reverse_apply(&EG(symbol_table), (apply_func_t) zval_call_destructor TSRMLS_CC);
+        } while (symbols != zend_hash_num_elements(&EG(symbol_table)));
+        zend_objects_store_call_destructors(&EG(objects_store) TSRMLS_CC);
     } zend_catch {
         /* if we couldn't destruct cleanly, mark all objects as destructed anyway */
-        zend_objects_store_mark_destructed(&amp;EG(objects_store) TSRMLS_CC);
+        zend_objects_store_mark_destructed(&EG(objects_store) TSRMLS_CC);
     } zend_end_try();
 }
 
 static int zval_call_destructor(zval **zv TSRMLS_DC)
 {
-    if (Z_TYPE_PP(zv) == IS_OBJECT &amp;&amp; Z_REFCOUNT_PP(zv) == 1) {
+    if (Z_TYPE_PP(zv) == IS_OBJECT && Z_REFCOUNT_PP(zv) == 1) {
         return ZEND_HASH_APPLY_REMOVE;
     } else {
         return ZEND_HASH_APPLY_KEEP;
@@ -787,7 +787,7 @@ static int zval_call_destructor(zval **zv TSRMLS_DC)
 }</code></pre>
 <p>As you can see, this is a three step destructor calling strategy :</p>
 <ul><li>Loop backwards the global symbol table and call destructors for objects where refcount = 1</li>
-<li>Then loop forward the global symbol table and call destructors for all the other objects (refcount &gt; 1)</li>
+<li>Then loop forward the global symbol table and call destructors for all the other objects (refcount > 1)</li>
 <li>If a problem happens in step 1 or 2, stop calling the remaining destructors</li>
 </ul><p>So, that leads to those behaviors :</p>
 <pre><code>class Foo { public function __destruct() { var_dump("destroyed Foo"); } }
@@ -842,10 +842,8 @@ If you happen, somewhere in the stack frame of your destructor, to destroy an ob
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

@@ -58,8 +58,8 @@ As you know how Exceptions work with PHP, because you are a heavy user of the PH
 <p>You know that the Exception class (and all of its possible children) is very special into the engine, because it is the only one that may react with the <em>try-throw-catch-finally</em> PHP language constructs.
 Also, you know the Exception class automagically builds a stacktrace when an object is built from it.
 Let's recall its structure :</p>
-<pre><code>&gt; php --rc Exception
-Class [ &lt;internal:Core&gt; class Exception ] {
+<pre><code>> php --rc Exception
+Class [ <internal:Core> class Exception ] {
 
   - Constants [0] { }
 
@@ -68,50 +68,50 @@ Class [ &lt;internal:Core&gt; class Exception ] {
   - Static methods [0] { }
 
   - Properties [7] {
-    Property [ &lt;default&gt; protected $message ]
-    Property [ &lt;default&gt; private $string ]
-    Property [ &lt;default&gt; protected $code ]
-    Property [ &lt;default&gt; protected $file ]
-    Property [ &lt;default&gt; protected $line ]
-    Property [ &lt;default&gt; private $trace ]
-    Property [ &lt;default&gt; private $previous ]
+    Property [ <default> protected $message ]
+    Property [ <default> private $string ]
+    Property [ <default> protected $code ]
+    Property [ <default> protected $file ]
+    Property [ <default> protected $line ]
+    Property [ <default> private $trace ]
+    Property [ <default> private $previous ]
   }
 
   - Methods [10] {
-    Method [ &lt;internal:Core&gt; final private method __clone ] {
+    Method [ <internal:Core> final private method __clone ] {
     }
 
-    Method [ &lt;internal:Core, ctor&gt; public method __construct ] {
+    Method [ <internal:Core, ctor> public method __construct ] {
 
       - Parameters [3] {
-        Parameter #0 [ &lt;optional&gt; $message ]
-        Parameter #1 [ &lt;optional&gt; $code ]
-        Parameter #2 [ &lt;optional&gt; $previous ]
+        Parameter #0 [ <optional> $message ]
+        Parameter #1 [ <optional> $code ]
+        Parameter #2 [ <optional> $previous ]
       }
     }
 
-    Method [ &lt;internal:Core&gt; final public method getMessage ] {
+    Method [ <internal:Core> final public method getMessage ] {
     }
 
-    Method [ &lt;internal:Core&gt; final public method getCode ] {
+    Method [ <internal:Core> final public method getCode ] {
     }
 
-    Method [ &lt;internal:Core&gt; final public method getFile ] {
+    Method [ <internal:Core> final public method getFile ] {
     }
 
-    Method [ &lt;internal:Core&gt; final public method getLine ] {
+    Method [ <internal:Core> final public method getLine ] {
     }
 
-    Method [ &lt;internal:Core&gt; final public method getTrace ] {
+    Method [ <internal:Core> final public method getTrace ] {
     }
 
-    Method [ &lt;internal:Core&gt; final public method getPrevious ] {
+    Method [ <internal:Core> final public method getPrevious ] {
     }
 
-    Method [ &lt;internal:Core&gt; final public method getTraceAsString ] {
+    Method [ <internal:Core> final public method getTraceAsString ] {
     }
 
-    Method [ &lt;internal:Core&gt; public method __toString ] {
+    Method [ <internal:Core> public method __toString ] {
     }
   }
 }</code></pre>
@@ -144,9 +144,9 @@ When the engine starts, among many other boots, it boots the exceptions by calli
     zend_class_entry ce;
 
     INIT_CLASS_ENTRY(ce, "Exception", default_exception_functions);
-    default_exception_ce = zend_register_internal_class(&amp;ce TSRMLS_CC);
-    default_exception_ce-&gt;create_object = zend_default_exception_new;
-    memcpy(&amp;default_exception_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
+    default_exception_ce = zend_register_internal_class(&ce TSRMLS_CC);
+    default_exception_ce->create_object = zend_default_exception_new;
+    memcpy(&default_exception_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
     default_exception_handlers.clone_obj = NULL;
 
     /* ... */
@@ -161,8 +161,8 @@ Here is the <em>create_object</em> handler :</p>
     zend_object *object;
     zval *trace;
 
-    Z_OBJVAL(obj) = zend_objects_new(&amp;object, class_type TSRMLS_CC);
-    Z_OBJ_HT(obj) = &amp;default_exception_handlers;
+    Z_OBJVAL(obj) = zend_objects_new(&object, class_type TSRMLS_CC);
+    Z_OBJ_HT(obj) = &default_exception_handlers;
 
     object_properties_init(object, class_type);
 
@@ -171,9 +171,9 @@ Here is the <em>create_object</em> handler :</p>
     Z_SET_REFCOUNT_P(trace, 0);
     zend_fetch_debug_backtrace(trace, skip_top_traces, 0, 0 TSRMLS_CC);
 
-    zend_update_property_string(default_exception_ce, &amp;obj, "file", sizeof("file")-1, zend_get_executed_filename(TSRMLS_C) TSRMLS_CC);
-    zend_update_property_long(default_exception_ce, &amp;obj, "line", sizeof("line")-1, zend_get_executed_lineno(TSRMLS_C) TSRMLS_CC);
-    zend_update_property(default_exception_ce, &amp;obj, "trace", sizeof("trace")-1, trace TSRMLS_CC);
+    zend_update_property_string(default_exception_ce, &obj, "file", sizeof("file")-1, zend_get_executed_filename(TSRMLS_C) TSRMLS_CC);
+    zend_update_property_long(default_exception_ce, &obj, "line", sizeof("line")-1, zend_get_executed_lineno(TSRMLS_C) TSRMLS_CC);
+    zend_update_property(default_exception_ce, &obj, "trace", sizeof("trace")-1, trace TSRMLS_CC);
 
     return Z_OBJVAL(obj);
 }</code></pre>
@@ -251,13 +251,13 @@ Here is <code>ZEND_THROW</code>, simplified :</p>
     /* ... */
 
     /* Change the VM path next to execute */
-    EG(opline_before_exception) = EG(current_execute_data)-&gt;opline;
-    EG(current_execute_data)-&gt;opline = EG(exception_op);
+    EG(opline_before_exception) = EG(current_execute_data)->opline;
+    EG(current_execute_data)->opline = EG(exception_op);
 }</code></pre>
 <p>That's it : <code>EG(exception)</code> is beeing filled with the thrown exception. And the very important things are the two last lines.</p>
 <pre><code>/* Change the VM path next to execute */
-EG(opline_before_exception) = EG(current_execute_data)-&gt;opline;
-EG(current_execute_data)-&gt;opline = EG(exception_op);</code></pre>
+EG(opline_before_exception) = EG(current_execute_data)->opline;
+EG(current_execute_data)->opline = EG(exception_op);</code></pre>
 <p>We just threw an Exception, so now, the engine is not expected to continue on the next instruction like if nothing had happened, but to treat the exception : run the catch block (if any), run the finally block (if any), or continue running if none of those blocks are present.</p>
 <p>This is done by changing the opline of the executor, and making it point to <code>EG(exception_op)</code>, which value is always the same : <code>ZEND_HANDLE_EXCEPTION</code></p>
 <h3 id="handling-an-exception">Handling an Exception<a href="#handling-an-exception" class="anchor">#</a></h3>
@@ -265,23 +265,23 @@ EG(current_execute_data)-&gt;opline = EG(exception_op);</code></pre>
 <p>This handler is a little bit big, because of some memory management routines. Simplified, it gives this :</p>
 <pre><code>ZEND_VM_HANDLER(149, ZEND_HANDLE_EXCEPTION, ANY, ANY)
 {
-    zend_uint op_num = EG(opline_before_exception)-EG(active_op_array)-&gt;opcodes;
+    zend_uint op_num = EG(opline_before_exception)-EG(active_op_array)->opcodes;
     int i;
     zend_uint catch_op_num = 0, finally_op_num = 0;
     void **stack_frame;
 
     /* ... */
 
-    for (i=0; i&lt;EG(active_op_array)-&gt;last_try_catch; i++) {
-        if (EG(active_op_array)-&gt;try_catch_array[i].try_op &gt; op_num) {
+    for (i=0; i<EG(active_op_array)->last_try_catch; i++) {
+        if (EG(active_op_array)->try_catch_array[i].try_op > op_num) {
             /* further blocks will not be relevant... */
             break;
         }
-        if (op_num &lt; EG(active_op_array)-&gt;try_catch_array[i].catch_op) {
-            catch_op_num = EX(op_array)-&gt;try_catch_array[i].catch_op;
+        if (op_num < EG(active_op_array)->try_catch_array[i].catch_op) {
+            catch_op_num = EX(op_array)->try_catch_array[i].catch_op;
         }
-        if (op_num &lt; EG(active_op_array)-&gt;try_catch_array[i].finally_op) {
-            finally_op_num = EX(op_array)-&gt;try_catch_array[i].finally_op;
+        if (op_num < EG(active_op_array)->try_catch_array[i].finally_op) {
+            finally_op_num = EX(op_array)->try_catch_array[i].finally_op;
         }
     }
 
@@ -295,16 +295,16 @@ The procedure is fast, because the compiler already filled-in the index of the <
 <pre><code>/* ... */
 
 /* Treat finally, as it is alone (no fetchable catch block) */
-if (finally_op_num &amp;&amp; (!catch_op_num || catch_op_num &gt;= finally_op_num)) {
+if (finally_op_num && (!catch_op_num || catch_op_num >= finally_op_num)) {
     zend_exception_save(TSRMLS_C);
     EX(fast_ret) = NULL;
-    ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[finally_op_num]);
+    ZEND_VM_SET_OPCODE(&EX(op_array)->opcodes[finally_op_num]);
     ZEND_VM_CONTINUE();
 } else if (catch_op_num) { /* Treat the catch block, as it is here and fetchable */
-    ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[catch_op_num]);
+    ZEND_VM_SET_OPCODE(&EX(op_array)->opcodes[catch_op_num]);
     ZEND_VM_CONTINUE();
 } else { /* leave, as there is no catch block nor finally block to fetch and treat */
-    if (UNEXPECTED((EX(op_array)-&gt;fn_flags &amp; ZEND_ACC_GENERATOR) != 0)) {
+    if (UNEXPECTED((EX(op_array)->fn_flags & ZEND_ACC_GENERATOR) != 0)) {
         ZEND_VM_DISPATCH_TO_HANDLER(ZEND_GENERATOR_RETURN);
     } else {
         ZEND_VM_DISPATCH_TO_HELPER(zend_leave_helper);
@@ -312,27 +312,27 @@ if (finally_op_num &amp;&amp; (!catch_op_num || catch_op_num &gt;= finally_op_nu
 }</code></pre>
 <p>Well, this is now very clear.
 If there is a finally block and no catch block, or if the catch block appears after the finally block, make the executor jump to the finally block, and run it</p>
-<pre><code>ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[finally_op_num]);
+<pre><code>ZEND_VM_SET_OPCODE(&EX(op_array)->opcodes[finally_op_num]);
 ZEND_VM_CONTINUE();</code></pre>
 <p>If there is no finally block but a catch block, make the executor jump to this catch block, and run it</p>
-<pre><code>ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[catch_op_num]);
+<pre><code>ZEND_VM_SET_OPCODE(&EX(op_array)->opcodes[catch_op_num]);
 ZEND_VM_CONTINUE();</code></pre>
 <p>Else, no catch nor finally ? Then make the executor runs the <code>zend_leave_helper</code>, which will basically acts like a <code>return</code> statement : it will stop the current execution and return from it, quickly leading to the "Uncaught Exception" error.</p>
 <p>The catch block is compiled as a <code>ZEND_CATCH</code> opcode. This latter will barely fetch the Exception class you declared into your catch block, and browse its inheritence tree to see if it will run the block or not.</p>
 <pre><code>ZEND_VM_HANDLER(107, ZEND_CATCH, CONST, CV)
 {
     /* ... */
-    catch_ce = zend_fetch_class_by_name(Z_STRVAL_P(opline-&gt;op1.zv), Z_STRLEN_P(opline-&gt;op1.zv), opline-&gt;op1.literal + 1, ZEND_FETCH_CLASS_NO_AUTOLOAD TSRMLS_CC);
+    catch_ce = zend_fetch_class_by_name(Z_STRVAL_P(opline->op1.zv), Z_STRLEN_P(opline->op1.zv), opline->op1.literal + 1, ZEND_FETCH_CLASS_NO_AUTOLOAD TSRMLS_CC);
 
     ce = Z_OBJCE_P(EG(exception));
 
     if (ce != catch_ce) { /* This is not our exception ? */
         if (!instanceof_function(ce, catch_ce TSRMLS_CC)) { /* This is not one of its ancestor ? */
-            if (opline-&gt;result.num) {
+            if (opline->result.num) {
                 zend_throw_exception_internal(NULL TSRMLS_CC); /* rethrow the exception */
                 HANDLE_EXCEPTION();
             }
-            ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;extended_value]);
+            ZEND_VM_SET_OPCODE(&EX(op_array)->opcodes[opline->extended_value]);
             ZEND_VM_CONTINUE();
         }
     }
@@ -359,41 +359,41 @@ ZEND_VM_CONTINUE();</code></pre>
 {
     zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
 
-    finally_token-&gt;u.op.opline_num = get_next_op_number(CG(active_op_array));
+    finally_token->u.op.opline_num = get_next_op_number(CG(active_op_array));
     /* call the the "finally" block */
-    opline-&gt;opcode = ZEND_FAST_CALL;
-    SET_UNUSED(opline-&gt;op1);
-    opline-&gt;op1.opline_num = finally_token-&gt;u.op.opline_num + 1;
-    SET_UNUSED(opline-&gt;op2);
+    opline->opcode = ZEND_FAST_CALL;
+    SET_UNUSED(opline->op1);
+    opline->op1.opline_num = finally_token->u.op.opline_num + 1;
+    SET_UNUSED(opline->op2);
     /* jump to code after the "finally" block,
      * the actual jump address is going to be set in zend_do_end_finally()
      */
     opline = get_next_op(CG(active_op_array) TSRMLS_CC);
-    opline-&gt;opcode = ZEND_JMP;
-    SET_UNUSED(opline-&gt;op1);
-    SET_UNUSED(opline-&gt;op2);
+    opline->opcode = ZEND_JMP;
+    SET_UNUSED(opline->op1);
+    SET_UNUSED(opline->op2);
 
     CG(context).in_finally++;
 }
 
 void zend_do_end_finally(znode *try_token, znode* catch_token, znode *finally_token TSRMLS_DC)
 {
-    if (catch_token-&gt;op_type == IS_UNUSED &amp;&amp; finally_token-&gt;op_type == IS_UNUSED) {
+    if (catch_token->op_type == IS_UNUSED && finally_token->op_type == IS_UNUSED) {
         zend_error(E_COMPILE_ERROR, "Cannot use try without catch or finally");
     }
-    if (finally_token-&gt;op_type != IS_UNUSED) {
+    if (finally_token->op_type != IS_UNUSED) {
         zend_op *opline;
 
-        CG(active_op_array)-&gt;try_catch_array[try_token-&gt;u.op.opline_num].finally_op = finally_token-&gt;u.op.opline_num + 1;
-        CG(active_op_array)-&gt;try_catch_array[try_token-&gt;u.op.opline_num].finally_end = get_next_op_number(CG(active_op_array));
-        CG(active_op_array)-&gt;has_finally_block = 1;
+        CG(active_op_array)->try_catch_array[try_token->u.op.opline_num].finally_op = finally_token->u.op.opline_num + 1;
+        CG(active_op_array)->try_catch_array[try_token->u.op.opline_num].finally_end = get_next_op_number(CG(active_op_array));
+        CG(active_op_array)->has_finally_block = 1;
 
         opline = get_next_op(CG(active_op_array) TSRMLS_CC);
-        opline-&gt;opcode = ZEND_FAST_RET;
-        SET_UNUSED(opline-&gt;op1);
-        SET_UNUSED(opline-&gt;op2);
+        opline->opcode = ZEND_FAST_RET;
+        SET_UNUSED(opline->op1);
+        SET_UNUSED(opline->op2);
 
-        CG(active_op_array)-&gt;opcodes[finally_token-&gt;u.op.opline_num].op1.opline_num = get_next_op_number(CG(active_op_array));
+        CG(active_op_array)->opcodes[finally_token->u.op.opline_num].op1.opline_num = get_next_op_number(CG(active_op_array));
 
         CG(context).in_finally--;
     }
@@ -416,29 +416,29 @@ echo "end";
 
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-         4    &gt; THROW                                         0          $1
-   5     5*     JMP                                                      -&gt;8
-         6  &gt;   CATCH                                         8          'Exception', !0
+         4    > THROW                                         0          $1
+   5     5*     JMP                                                      ->8
+         6  >   CATCH                                         8          'Exception', !0
    6     7      ECHO                                                     'catch+block'
-   7     8      FAST_CALL                                                -&gt;10
-         9    &gt; JMP                                                      -&gt;12
+   7     8      FAST_CALL                                                ->10
+         9    > JMP                                                      ->12
    8    10*     ECHO                                                     'finally+block'
    9    11*     FAST_RET                                                 
-  11    12  &gt;   ECHO                                                     'end'
-  12    13    &gt; RETURN                                                   1</code></pre>
+  11    12  >   ECHO                                                     'end'
+  12    13    > RETURN                                                   1</code></pre>
 <p>When the executor comes to run the finally block, it then first runs the <code>ZEND_FAST_CALL</code> OPCode, it looks like this :</p>
 <pre><code>ZEND_VM_HANDLER(162, ZEND_FAST_CALL, ANY, ANY)
 {
     USE_OPLINE
 
-    if ((opline-&gt;extended_value &amp; ZEND_FAST_CALL_FROM_CATCH) &amp;&amp;
+    if ((opline->extended_value & ZEND_FAST_CALL_FROM_CATCH) &&
         UNEXPECTED(EG(prev_exception) != NULL)) {
         /* in case of unhandled exception jump to catch block instead of finally */
-        ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;op2.opline_num]);
+        ZEND_VM_SET_OPCODE(&EX(op_array)->opcodes[opline->op2.opline_num]);
         ZEND_VM_CONTINUE();
     }
     EX(fast_ret) = opline;
-    ZEND_VM_SET_OPCODE(opline-&gt;op1.jmp_addr);
+    ZEND_VM_SET_OPCODE(opline->op1.jmp_addr);
     ZEND_VM_CONTINUE();
 }</code></pre>
 <p>What we do in the normal flow, is memorize the current opcode beeing dispatched, that is ourselves : <code>ZEND_FAST_CALL</code>, we save this OPCode index (into the OPArray) using <code>EX(fast_ret)</code>.
@@ -448,22 +448,22 @@ Then, we make the executor go to the OPCode stored into a jump address computed 
 {
     if (EX(fast_ret)) {
         ZEND_VM_SET_OPCODE(EX(fast_ret) + 1);
-        if ((EX(fast_ret)-&gt;extended_value &amp; ZEND_FAST_CALL_FROM_FINALLY)) {
-            EX(fast_ret) = &amp;EX(op_array)-&gt;opcodes[EX(fast_ret)-&gt;op2.opline_num];
+        if ((EX(fast_ret)->extended_value & ZEND_FAST_CALL_FROM_FINALLY)) {
+            EX(fast_ret) = &EX(op_array)->opcodes[EX(fast_ret)->op2.opline_num];
         }
         ZEND_VM_CONTINUE();
     } else {
         /* special case for unhandled exceptions */
         USE_OPLINE
 
-        if (opline-&gt;extended_value == ZEND_FAST_RET_TO_FINALLY) {
-            ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;op2.opline_num]);
+        if (opline->extended_value == ZEND_FAST_RET_TO_FINALLY) {
+            ZEND_VM_SET_OPCODE(&EX(op_array)->opcodes[opline->op2.opline_num]);
             ZEND_VM_CONTINUE();
-        } else if (opline-&gt;extended_value == ZEND_FAST_RET_TO_CATCH) {
+        } else if (opline->extended_value == ZEND_FAST_RET_TO_CATCH) {
             zend_exception_restore(TSRMLS_C);
-            ZEND_VM_SET_OPCODE(&amp;EX(op_array)-&gt;opcodes[opline-&gt;op2.opline_num]);
+            ZEND_VM_SET_OPCODE(&EX(op_array)->opcodes[opline->op2.opline_num]);
             ZEND_VM_CONTINUE();
-        } else if (UNEXPECTED((EX(op_array)-&gt;fn_flags &amp; ZEND_ACC_GENERATOR) != 0)) {
+        } else if (UNEXPECTED((EX(op_array)->fn_flags & ZEND_ACC_GENERATOR) != 0)) {
             zend_exception_restore(TSRMLS_C);
             ZEND_VM_DISPATCH_TO_HANDLER(ZEND_GENERATOR_RETURN);
         } else {
@@ -485,17 +485,17 @@ if (EG(exception)) {
         zval **params[1], *retval2, *old_exception;
         old_exception = EG(exception);
         EG(exception) = NULL;
-        params[0] = &amp;old_exception;
+        params[0] = &old_exception;
         orig_user_exception_handler = EG(user_exception_handler);
-        if (call_user_function_ex(CG(function_table), NULL, orig_user_exception_handler, &amp;retval2, 1, params, 1, NULL TSRMLS_CC) == SUCCESS) {
+        if (call_user_function_ex(CG(function_table), NULL, orig_user_exception_handler, &retval2, 1, params, 1, NULL TSRMLS_CC) == SUCCESS) {
             if (retval2 != NULL) {
-                zval_ptr_dtor(&amp;retval2);
+                zval_ptr_dtor(&retval2);
             }
             if (EG(exception)) {
-                zval_ptr_dtor(&amp;EG(exception));
+                zval_ptr_dtor(&EG(exception));
                 EG(exception) = NULL;
             }
-            zval_ptr_dtor(&amp;old_exception);
+            zval_ptr_dtor(&old_exception);
         } else {
             EG(exception) = old_exception;
             zend_exception_error(EG(exception), E_ERROR TSRMLS_CC);
@@ -511,7 +511,7 @@ if (EG(exception)) {
 <p>We've seen that the stack trace generation -which itself is a heavy and complex subject into the Zend Engine- is generated when the Exception object gets constructed. The stack trace is added to the <code>trace</code> private attribute. This is to be remembered, because now, when you will try to serialize an Exception (if you want to), then any of its attribute will get serialized (that's PHP default behavior you know about), but what about this <code>trace</code> attribute ?
 The trick is that this latter may not be serializable, if the stack trace of the Exception contains something which is not serializable, like a SimpleXMLElement object, or a PDO one.</p>
 <p>Have a look :</p>
-<pre><code>$xml = new SimpleXMLElement('&lt;foo&gt;&lt;/foo&gt;');
+<pre><code>$xml = new SimpleXMLElement('<foo></foo>');
 
 function hey($arg)
 {
@@ -523,15 +523,15 @@ hey($xml);</code></pre>
 <pre><code>Fatal error: Uncaught exception 'Exception' with message 'Serialization of 'SimpleXMLElement' is not allowed' in foo.php</code></pre>
 <p>Now you know why. If you want to serialize Exception for whatever reason, take care that the stack trace into the Exception object may be huge and not serializable.</p>
 <h3 id="exception-thrown-without-a-stack-frame">Exception thrown without a stack frame<a href="#exception-thrown-without-a-stack-frame" class="anchor">#</a></h3>
-<p>This used to be a strange behavior in PHP &lt; 5.3. Since PHP 5.3 however, this error should not show again with vanilla PHP, but some badly designed custom extensions could still lead to such an error message to appear.</p>
+<p>This used to be a strange behavior in PHP < 5.3. Since PHP 5.3 however, this error should not show again with vanilla PHP, but some badly designed custom extensions could still lead to such an error message to appear.</p>
 <h3 id="using-reflection-to-crash-php-with-exceptions">Using Reflection to crash PHP with Exceptions.<a href="#using-reflection-to-crash-php-with-exceptions" class="anchor">#</a></h3>
 <p>This code crashes the engine :</p>
 <pre><code>$e  = new ReflectionClass('Exception');
 $ex = new Exception('foo');
 
-$file = $e-&gt;getProperty('trace');
-$file-&gt;setAccessible(true);
-$file-&gt;setValue($ex, new stdclass);
+$file = $e->getProperty('trace');
+$file->setAccessible(true);
+$file->setValue($ex, new stdclass);
 
 throw $ex;</code></pre>
 <p>And this is perfectly normal if you followed the whole article.
@@ -557,10 +557,8 @@ We can then say that Exceptions are not a slow feature into PHP, but a well opti
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

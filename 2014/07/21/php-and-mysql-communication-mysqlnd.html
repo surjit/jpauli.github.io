@@ -56,13 +56,13 @@ and how to use it.</p>
 <h2 id="foresee">Foresee<a href="#foresee" class="anchor">#</a></h2>
 <p>PHP communicates with MySQL through a connector. 2 of them exist : libmysql or mysqlnd. libmysql is licenced by Oracle, while mysqlnd is under the PHP licence. Both code bases are mostly maintained by Oracle employees.
 If a user wants to communicate with MySQL using the PHP language, this latter publishes 3 APIs in this goal : ext/mysql, ext/mysqli and ext/pdo_mysql.</p>
-<p><img alt="libmysql" src="../../../img/php-mysql-com/php-arch-libmysql.png"><img alt="mysqlnd" src="../../../img/php-mysql-com/php-arch-mysqlnd.png"></p>
+<p><img src="../../../img/php-mysql-com/php-arch-libmysql.png" alt="libmysql"><img src="../../../img/php-mysql-com/php-arch-mysqlnd.png" alt="mysqlnd"></p>
 <h3 id="connectors">Connectors<a href="#connectors" class="anchor">#</a></h3>
 <h4 id="libmysql">libmysql<a href="#libmysql" class="anchor">#</a></h4>
 <p>Historicaly, PHP needed the MySQL server C connector to be able to talk with it. This connector is also known as "libmysql", and may be installed on your system with a command like <code>apt-get install libmysql</code>. This connector implements the MySQL communication API, let's see an example :</p>
-<pre><code>#include &lt;stdio.h&gt;
-#include &lt;stdlib.h&gt;
-#include &lt;mysql/mysql.h&gt;
+<pre><code>#include <stdio.h>
+#include <stdlib.h>
+#include <mysql/mysql.h>
 #include "mysql_example.h" /* Pour MYSQL_HOST, MYSQL_USER, MYSQL_PASS */
 
 int main(int argv, char *argc[])
@@ -90,7 +90,7 @@ int main(int argv, char *argc[])
     exit(EXIT_SUCCESS);
 }</code></pre>
 <p>You can run this code by linking your binary with libmysql, GCC's switch "-lmysql".
-The libmysql documentation is detailed, and online, at <a href="http://dev.mysql.com/doc/refman/5.0/en/c-api.html"><a href="http://dev.mysql.com/doc/refman/5.0/en/c-api.html">http://dev.mysql.com/doc/refman/5.0/en/c-api.html</a></p>
+The libmysql documentation is detailed, and online, at <a href="http://dev.mysql.com/doc/refman/5.0/en/c-api.html"></a><a href="http://dev.mysql.com/doc/refman/5.0/en/c-api.html">http://dev.mysql.com/doc/refman/5.0/en/c-api.html</a></p>
 <p>As you could have noticed, the PHP extensions "mysql" and "mysqli" borrow this C API to publish it to PHP land. This is one of the PHP way of doing things : when an extension creator embeds a C API
 into PHP's source to publish it to PHP user land, usually he gives it the same API as the C one, this way when you know one of them, you are not lost getting hands into the second one.</p>
 <p>libmysql however could bring some problems to your architecture :</p>
@@ -116,16 +116,16 @@ It also publishes an object oriented API to the PHP user, together with a proced
 <p>PDO ships with an SQL parser which is to emulate prepared statements if the underlying RDBMS doesn't support them. The problem is that this layer behaves differently from the RDBMS' one, when present.
 If you take the MySQL case, the PDO emulation layer is active by default when you prepare a query, and this one will never hit MySQL prepared statement layer which is probably not what you want. In fact, PDO's code will parse and build your query, never communicating with MySQL about this (by default). This is weird. Turn this emulation layer off as soon as you can :</p>
 <pre><code>/* Disable PDO prepared statements emulation */
-$pdo-&gt;setAttribute(PDO::ATTR_EMULATE_PREPARES, 0);
+$pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, 0);
 
 /* This is exactly the same, take care, we really pass 0 here and not 1 */
-$pdo-&gt;setAttribute(PDO::MYSQL_ATTR_DIRECT_QUERY, 0);</code></pre>
+$pdo->setAttribute(PDO::MYSQL_ATTR_DIRECT_QUERY, 0);</code></pre>
 <p>When the emulation layer is disabled, you rely with a true prepared statement. When it is enabled, PDO will take care of constructing the query for you, and will send a traditionnal normal query to the RDBMS. This has lots of drawbacks and can lead to strange behaviors. As PDO doesn't know anything about tables' columns, its emulation layer will quote every parameter when bound to an emulated prepared statement, even the parameter of integer type, which don't need such quoting. This leads to errors :</p>
-<pre><code>$stmt = $pdo-&gt;prepare("SELECT user_id FROM users LIMIT :limit");
-$stmt-&gt;bindValue('limit', 10);
-$stmt-&gt;execute();
+<pre><code>$stmt = $pdo->prepare("SELECT user_id FROM users LIMIT :limit");
+$stmt->bindValue('limit', 10);
+$stmt->execute();
 
-$result = $stmt-&gt;fetch();
+$result = $stmt->fetch();
 var_dump($result);
 
 /*
@@ -134,25 +134,25 @@ check the manual that corresponds to your MySQL server version for the right syn
 */</code></pre>
 <p>We see from this error message that PDO escaped my 'limit' parameter quoting it wrongly, as it is an integer and doesn't need that.
 Let's try again with no emulation layer, relying only on the RDBMS layer (MySQL here):</p>
-<pre><code>$pdo-&gt;setAttribute(PDO::ATTR_EMULATE_PREPARES, 0); /* Disable prepared statement emulation layer */
-$stmt = $pdo-&gt;prepare("SELECT user_id FROM users LIMIT :limit"); /* A true prepare() will be sent to the RDBMS, it has to support it */
-$stmt-&gt;bindValue('limit', 10);
-$stmt-&gt;execute();
+<pre><code>$pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, 0); /* Disable prepared statement emulation layer */
+$stmt = $pdo->prepare("SELECT user_id FROM users LIMIT :limit"); /* A true prepare() will be sent to the RDBMS, it has to support it */
+$stmt->bindValue('limit', 10);
+$stmt->execute();
 
-$result = $stmt-&gt;fetch();
+$result = $stmt->fetch();
 var_dump($result);
 /*
 array(4) {
-  ["user_id"]=&gt;
+  ["user_id"]=>
   string(7) "18"
-  [0]=&gt;
+  [0]=>
   string(7) "18"
 }
 */</code></pre>
 <p>Things now work.
 If you would want to still use the emulation layer, you'd then need to precise to PDO that your parameter is of type integer, like this :</p>
 <pre><code> /* Tells the PDO prepared statement emulation layer that this column is of type integer (SQL type) */
-$stmt-&gt;bindValue('limit', 10, PDO::PARAM_INT);</code></pre>
+$stmt->bindValue('limit', 10, PDO::PARAM_INT);</code></pre>
 <p>And here you don't have the whole story.</p>
 <p>Whereas we explicitely disabled the prepared statement emulation layer in PDO, this one is still a little active. The layer is still triggered for parameter parsing. You know about the two parameter syntax : anonymous parameters, implemented as "?" in your query for placeholders, or the named parameters, as ":myparam". Those two syntaxes are not supported by every RDBMS, and guess what ? MySQL doesn't support the named parameters one, only the question-mark-based one.
 However, our preceding query still completed fine... This is because the PDO query analyzer is still active, even with prepared statement emulation layer tured off. It stepped in and replaced every named parameter by an anonymous one, because it asked the RDBMS (MySQL here) about its capabilities to support those syntaxes, and MySQL answered it did not support the named parameters syntax. PDO then replaced every ":myparamname" by a "?".
@@ -160,15 +160,14 @@ Tricky isn't it ?</p>
 <p>By trying to satisfy every soul on earth, PDO created an API that is full of trade-offs. It is in fact well designed, and eases the PHP developers life in a huge majority of cases, but hidding complexity is a double-edged sword. If you hit the bogus case, your are then in trouble if you don't know what happens in the lower layers.</p>
 <h2 id="zoom-on-the-mysqli-extension">Zoom on the mysqli extension<a href="#zoom-on-the-mysqli-extension" class="anchor">#</a></h2>
 <p>mysqli is a nice extension, really. Nowadays, everybody uses PDO, the main argument about this is if you were to switch from one RDBMS to an other, this would ease many things. I don't know you, but I've never met such a situation. If you use MySQL RDBMS, and you are pretty unlikely to change (in production), which usually is the case : don't use PDO, you'll lose many things and suffer from one more layer of abstraction which can't offer everything the RDBMS can offer. Have a look at mysqli API and notice how rich it is :</p>
-<p><img alt="mysqli" src="../../../img/php-mysql-com/mysqli-api.jpg"></p>
+<p><img src="../../../img/php-mysql-com/mysqli-api.jpg" alt="mysqli"></p>
 <p>First of all, mysqli has always been blamed for not generating exceptions but PHP errors. This is wrong.</p>
-<pre><code>&lt;?php
-mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+<pre><code>mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 try {
     $db = mysqli_connect('myserver', 'myuser', 'secret', 'unknown_database');
 } catch (mysqli_sql_exception $e) {
-    exit($e-&gt;getMessage());
+    exit($e->getMessage());
 }
 try {
     mysqli_query($db, "SELECT foo FROM bar");
@@ -176,8 +175,7 @@ try {
 } catch(mysqli_sql_exception $e) { }</code></pre>
 <p>You see ?</p>
 <p>mysqli can even tell you when you miss an index :</p>
-<pre><code>&lt;?php
-mysqli_report(MYSQLI_REPORT_INDEX);
+<pre><code>mysqli_report(MYSQLI_REPORT_INDEX);
 $db = mysqli_connect('myserver', 'myuser', 'secret', 'my_database');
 
 mysqli_query($db, "SELECT photo FROM Users WHERE source ='web' LIMIT 1000");
@@ -185,7 +183,7 @@ mysqli_query($db, "SELECT photo FROM Users WHERE source ='web' LIMIT 1000");
 /* PHP Warning:  mysqli_query(): (00000/0): No index used in query/prepared statement ... */</code></pre>
 <p>MySQL communicates many things with its client (PHP in our case). For more information, you should read the <a href="http://dev.mysql.com/doc/internals/en/client-server-protocol.html">MySQL client/server protocol documentation</a></p>
 <p>Second thing : mysqli provides a function to change the character set : <code>mysqli_set_character_name()</code>. You should never use "SET NAMES" query, because the escaping strategies won't use it.
-You can read more info about this at <a href="http://php.net/mysqlinfo.concepts.charset.php"><a href="http://php.net/mysqlinfo.concepts.charset.php">http://php.net/mysqlinfo.concepts.charset.php</a></a> or <a href="http://dev.mysql.com/doc/refman/5.7/en/charset-connection.html"><a href="http://dev.mysql.com/doc/refman/5.7/en/charset-connection.html">http://dev.mysql.com/doc/refman/5.7/en/charset-connection.html</a></p>
+You can read more info about this at <a href="http://php.net/mysqlinfo.concepts.charset.php"></a><a href="http://php.net/mysqlinfo.concepts.charset.php">http://php.net/mysqlinfo.concepts.charset.php</a> or <a href="http://dev.mysql.com/doc/refman/5.7/en/charset-connection.html"></a><a href="http://dev.mysql.com/doc/refman/5.7/en/charset-connection.html">http://dev.mysql.com/doc/refman/5.7/en/charset-connection.html</a></p>
 <p>Now, let's talk about buffered queries, which is a very obscur part.
 When you query MySQL for results, so usually when you use SELECT queries, a resultset will be created and results will be in. Buffered resultsets is the concept about where to store the resultset ? Should it be stored into the client memory (buffered query), or stay on the MySQL side (unbuffered query) ? That's all.</p>
 <p>Please, note that we are talking about direct queries and not prepared statements, which are not the same at all. We'll give a word about prepared statements later on.</p>
@@ -229,7 +227,7 @@ while($r = mysqli_fetch_row($q)) {
     /* do something */
 }
 mysqli_free_result($r);</code></pre>
-<p><img alt="mysql text protocol" src="../../../img/php-mysql-com/mysql-simple-dump.png"></p>
+<p><img src="../../../img/php-mysql-com/mysql-simple-dump.png" alt="mysql text protocol"></p>
 <p>As you can see on the picture, this is a textual protocol, this means that the data that MySQL sends back to PHP is only text. You asked for an integer column in your query ? you'll be given some text. Ouch ! That first means that MySQL has some additionnal work to do to turn the data types from its columns into texts. And that also means that on the PHP side, you'll only be able to retrieve PHP strings, even if your asked columns store different types.</p>
 <p>Here we go for the same query as prepared statement :</p>
 <pre><code>$m = mysqli_connect(/* params */);
@@ -239,7 +237,7 @@ while(mysqli_stmt_fetch($ps)) {
     /*  */
 }
 mysqli_stmt_close($ps);</code></pre>
-<p><img alt="mysql binary protocol" src="../../../img/php-mysql-com/mysql-ps-dump.png"></p>
+<p><img src="../../../img/php-mysql-com/mysql-ps-dump.png" alt="mysql binary protocol"></p>
 <p>The protocol image shows that this time, there are more communications. Every bind (not done on our example) and every fetch will trigger MySQL to receive or transmit data on the wire.
 However, we can't see that on the picture but the protocol used was binary, that means that every column type is respected and transmetted as-is : an integer will be sent as an integer, and not a string
 anymore. Should you remember your type sizes, transmitting for example a TINYINT 200 will weigh one byte on the network whereas it would have used 4 bytes if turned to text. The binary protocol is then lighter from this point of view, but there are also more network interchange for signaling.</p>
@@ -326,7 +324,7 @@ foreach($results as $foo) { /* do something */ }</code></pre>
 {
     $pid = getmypid();
     $r = explode(':',shell_exec("grep VmData /proc/$pid/status"));
-    return '-&gt;'.trim($r[1])."\n";
+    return '->'.trim($r[1])."\n";
 }
 $db = mysqli_connect(/* */);
 
@@ -342,60 +340,60 @@ echo "saved result freed " . memory_usage();
 unset($db);
 echo "Db closed " . memory_usage();</code></pre>
 <p>With libmysql, here are the numbers :</p>
-<pre><code>&gt; phplibmysql/bin/php poc_mysqli.php
-initial memory -&gt;3348 kB
-resultSet stored -&gt;72724 kB
-query result saved -&gt;149012 kB
-resultSet freed -&gt;81156 kB
-saved result freed -&gt;25348 kB
-Db closed -&gt;24260 kB</code></pre>
+<pre><code>> phplibmysql/bin/php poc_mysqli.php
+initial memory ->3348 kB
+resultSet stored ->72724 kB
+query result saved ->149012 kB
+resultSet freed ->81156 kB
+saved result freed ->25348 kB
+Db closed ->24260 kB</code></pre>
 <p>As you can see, as soon as the <code>mysqli_query()</code> is executed, all the resultset is transmitted into PHP's memory. On this example, the memory raises from 3Mb to 70Mb ! (this is a true, real life example).
 This is normal behavior as by default, direct queries are in buffered mode. What is important to understand here is that the resultset memory buffer <strong>has been allocated by the communication library : libmysql</strong>. And when it comes to turn this resultset to something PHP can use, fetch it into an array, <strong>the entire data into the resultset will be duplicated in memory</strong>, resulting in an enormous waste.</p>
 <p>As the resultset buffer is allocated by libmysql, it wont show into <code>memory_get_usage()</code>, but you'll need to monitor your process heap to see that (like its done in the example using <em>/proc</em>).</p>
 <p>So transforming the whole data from a resultset into a PHP variable blows up the memory. At this stage, libmysql buffer is still allocated and the data is fully duplicated into buckets of a PHP array, thus we are consuming now about 140Mb. Let's convince ourselves about those allocation by running valgrind memory analyzer with massif :</p>
 <pre><code>99.92% (257,473,815B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
--&gt;52.90% (136,314,880B) 0x69A01E: _zend_mm_alloc_int (zend_alloc.c:1908)
-| -&gt;52.60% (135,528,448B) 0x69A1DE: _estrndup (zend_alloc.c:2503)
-| | -&gt;52.60% (135,528,448B) 0x533BCE: php_mysqli_fetch_into_hash (mysqli.c:1191)
-| |   -&gt;52.60% (135,528,448B) 0x53F2E1: zif_mysqli_fetch_row (mysqli_nonapi.c:352)
-| |     -&gt;52.60% (135,528,448B) 0x70186A: zend_do_fcall_common_helper_SPEC (zend_vm_execute.h:320)
-| |       -&gt;52.60% (135,528,448B) 0x6D9D96: execute (zend_vm_execute.h:107)
-| |         -&gt;52.60% (135,528,448B) 0x6B4B98: zend_execute_scripts (zend.c:1236)
-| |           -&gt;52.60% (135,528,448B) 0x663D0C: php_execute_script (main.c:2308)
-| |             -&gt;52.60% (135,528,448B) 0x73BCDC: main (php_cli.c:1184)
+->52.90% (136,314,880B) 0x69A01E: _zend_mm_alloc_int (zend_alloc.c:1908)
+| ->52.60% (135,528,448B) 0x69A1DE: _estrndup (zend_alloc.c:2503)
+| | ->52.60% (135,528,448B) 0x533BCE: php_mysqli_fetch_into_hash (mysqli.c:1191)
+| |   ->52.60% (135,528,448B) 0x53F2E1: zif_mysqli_fetch_row (mysqli_nonapi.c:352)
+| |     ->52.60% (135,528,448B) 0x70186A: zend_do_fcall_common_helper_SPEC (zend_vm_execute.h:320)
+| |       ->52.60% (135,528,448B) 0x6D9D96: execute (zend_vm_execute.h:107)
+| |         ->52.60% (135,528,448B) 0x6B4B98: zend_execute_scripts (zend.c:1236)
+| |           ->52.60% (135,528,448B) 0x663D0C: php_execute_script (main.c:2308)
+| |             ->52.60% (135,528,448B) 0x73BCDC: main (php_cli.c:1184)
 | |               
-| -&gt;00.31% (786,432B) in 1+ places, all below ms_print's threshold (01.00%)
+| ->00.31% (786,432B) in 1+ places, all below ms_print's threshold (01.00%)
 | 
--&gt;45.85% (118,130,675B) 0x52DD010: my_malloc (my_malloc.c:37)
-| -&gt;45.84% (118,112,344B) 0x52E0583: alloc_root (my_alloc.c:219)
-| | -&gt;45.83% (118,096,024B) 0x5307A40: cli_read_rows (client.c:1418)
-| | | -&gt;45.83% (118,096,024B) 0x5305955: mysql_store_result (client.c:2957)
-| | |   -&gt;45.83% (118,096,024B) 0x53EF09: zif_mysqli_query (mysqli_nonapi.c:540)
-| | |     -&gt;45.83% (118,096,024B) 0x70186A: zend_do_fcall_common_helper_SPEC (zend_vm_execute.h:320)
-| | |       -&gt;45.83% (118,096,024B) 0x6D9D96: execute (zend_vm_execute.h:107)
-| | |         -&gt;45.83% (118,096,024B) 0x6B4B98: zend_execute_scripts (zend.c:1236)
-| | |           -&gt;45.83% (118,096,024B) 0x663D0C: php_execute_script (main.c:2308)
-| | |             -&gt;45.83% (118,096,024B) 0x73BCDC: main (php_cli.c:1184)</code></pre>
+->45.85% (118,130,675B) 0x52DD010: my_malloc (my_malloc.c:37)
+| ->45.84% (118,112,344B) 0x52E0583: alloc_root (my_alloc.c:219)
+| | ->45.83% (118,096,024B) 0x5307A40: cli_read_rows (client.c:1418)
+| | | ->45.83% (118,096,024B) 0x5305955: mysql_store_result (client.c:2957)
+| | |   ->45.83% (118,096,024B) 0x53EF09: zif_mysqli_query (mysqli_nonapi.c:540)
+| | |     ->45.83% (118,096,024B) 0x70186A: zend_do_fcall_common_helper_SPEC (zend_vm_execute.h:320)
+| | |       ->45.83% (118,096,024B) 0x6D9D96: execute (zend_vm_execute.h:107)
+| | |         ->45.83% (118,096,024B) 0x6B4B98: zend_execute_scripts (zend.c:1236)
+| | |           ->45.83% (118,096,024B) 0x663D0C: php_execute_script (main.c:2308)
+| | |             ->45.83% (118,096,024B) 0x73BCDC: main (php_cli.c:1184)</code></pre>
 <p>my_malloc() is libmysql's allocator on top of malloc.</p>
 <p>To free the resultset libmysql's keeping warm, you must call <code>mysqli_free_result()</code>. We can see that we fall back to about 70Mb after this call, and then, when we finally free the PHP array containing a copy of the resultset, we drop back to initial memory usage (on average, some cache systems may trigger, this is not leaked memory).</p>
 <p>This duplication from libmysql's buffer to PHP memory can be prevented using mysqlnd. mysqlnd will benefit from the copy on write behavior of PHP zvals to save those copies. Let's show that :</p>
-<pre><code>&gt; phpmysqlnd/bin/php poc_mysqli.php
-initial memory -&gt;3208 kB
-resultSet stored -&gt;70452 kB
-query result saved -&gt;71220 kB
-resultSet freed -&gt;81148 kB
-saved result freed -&gt;19196 kB
-Db closed -&gt;19196 kB</code></pre>
+<pre><code>> phpmysqlnd/bin/php poc_mysqli.php
+initial memory ->3208 kB
+resultSet stored ->70452 kB
+query result saved ->71220 kB
+resultSet freed ->81148 kB
+saved result freed ->19196 kB
+Db closed ->19196 kB</code></pre>
 <p>As you can see, when the buffered resultset is fetched into a PHP array, the memory does not move. Far from beeing multiplied by two hun ?
 Only at the time you'll start writing into this array (should you write into it), thus modifying the fetched results, PHP will duplicate the result on a case by case basis, which is really cool for memory usage. If you stay with a read-only approach, then you'll save lots of memory.
 Also, mysqlnd used the PHP memory allocator to store the resultset into its own buffer, the memory usage is shared with PHP, and <code>memory_get_usage()</code> will show this memory and you could also hit the <em>memory_limit</em> PHP setting.</p>
 <p>Knowing that apps mainly SELECT data, then fetches them to usually display them (read only), it is a pure waste to still use libmysql as low level communication for such use cases.
 And I don't talk about batch scripts, written in PHP, treating lots of data from MySQL, and from where people often complain about memory usage... It's not PHP's fault you know ;-)</p>
-<p>Another approach would also be to prevent any "fetch all" operation. PDO's got such an API : <code>$stmt-&gt;fetchAll()</code>, which transforms all the resultset into a PHP variable. It is way better for memory usage to seek into the resultset and consume the actual data, then loop to the next one, than looping once and turning any row into a PHP array bucket. <em>PDOStatement</em> even implements <em>Traversable</em>, and is then usable using foreach, same for mysqli_result.</p>
+<p>Another approach would also be to prevent any "fetch all" operation. PDO's got such an API : <code>$stmt->fetchAll()</code>, which transforms all the resultset into a PHP variable. It is way better for memory usage to seek into the resultset and consume the actual data, then loop to the next one, than looping once and turning any row into a PHP array bucket. <em>PDOStatement</em> even implements <em>Traversable</em>, and is then usable using foreach, same for mysqli_result.</p>
 <h3 id="statistics">Statistics<a href="#statistics" class="anchor">#</a></h3>
 <p>As mysqlnd act between any PHP Mysql layer, and the MySQL server, it sees everything : every single byte exchanged between both parts is seen, and can be counted to collect very useful statistics.
 Let's have a look at some of them :</p>
-<p><img alt="mysqlnd statistics" src="../../../img/php-mysql-com/mysqlnd-stats-phpinfo.png"></p>
+<p><img src="../../../img/php-mysql-com/mysqlnd-stats-phpinfo.png" alt="mysqlnd statistics"></p>
 <p>Here are some useful questions mysqlnd can answer very easily without requiring monitoring plugins, which are always heavy to setup and live on server side :</p>
 <ul><li>How many MySQL active connections do I have ?</li>
 <li>How many MySQL connection errors PHP met so far ?</li>
@@ -415,23 +413,23 @@ mysqli_free_result($result);
 var_dump(mysqli_get_connection_stats($db)); /* only available under mysqlnd */
 
 /*
-["buffered_sets"]=&gt;
+["buffered_sets"]=>
   string(1) "1"
-["rows_fetched_from_server_normal"]=&gt;
+["rows_fetched_from_server_normal"]=>
   string(1) "5"
-["rows_buffered_from_client_normal"]=&gt;
+["rows_buffered_from_client_normal"]=>
   string(1) "5"
-["rows_fetched_from_client_normal_buffered"]=&gt;
+["rows_fetched_from_client_normal_buffered"]=>
   string(1) "1"
-["connect_success"]=&gt;
+["connect_success"]=>
   string(1) "1"
-["connect_failure"]=&gt;
+["connect_failure"]=>
   string(1) "0"
-["connection_reused"]=&gt;
+["connection_reused"]=>
   string(1) "0"
-["reconnect"]=&gt;
+["reconnect"]=>
   string(1) "0"
-["active_connections"]=&gt;
+["active_connections"]=>
   string(1) "1"
 */</code></pre>
 <p>The above code queries for 5 results, seeks into the resultset directly to the 5th, fetches it, uses it and frees all the resultset. Why so query for 5 results and only use one ?
@@ -441,8 +439,8 @@ We can see from the statistics array that <em>rows_fetched_from_server_normal</e
 {
     public function __destruct()
     {
-        $stats = $this-&gt;get_connection_stats();
-        $this-&gt;close();
+        $stats = $this->get_connection_stats();
+        $this->close();
         if($diff = $stats["rows_fetched_from_server_normal"] - ($stats["rows_fetched_from_client_normal_unbuffered"] + $stats["rows_fetched_from_client_normal_buffered"])) {
             trigger_error("You didn't use *$diff* selected results", E_USER_NOTICE);
         }
@@ -460,7 +458,7 @@ exit();
 Notice : "You didn't use *4* selected results"
 */</code></pre>
 <p>Nice, knowing that this particular behavior is really common is userland. So many applications run queries selecting tons of result, but only effectively using part of them.</p>
-<p>If you are using Symfony2 applications, you may use <a href="https://packagist.org/packages/js/mysqlnd-bundle"><a href="https://packagist.org/packages/js/mysqlnd-bundle">https://packagist.org/packages/js/mysqlnd-bundle</a></a> or <a href="https://packagist.org/packages/js/mysqlnd-analytics"><a href="https://packagist.org/packages/js/mysqlnd-analytics">https://packagist.org/packages/js/mysqlnd-analytics</a></p>
+<p>If you are using Symfony2 applications, you may use <a href="https://packagist.org/packages/js/mysqlnd-bundle"></a><a href="https://packagist.org/packages/js/mysqlnd-bundle">https://packagist.org/packages/js/mysqlnd-bundle</a> or <a href="https://packagist.org/packages/js/mysqlnd-analytics"></a><a href="https://packagist.org/packages/js/mysqlnd-analytics">https://packagist.org/packages/js/mysqlnd-analytics</a></p>
 <h3 id="plugins">Plugins<a href="#plugins" class="anchor">#</a></h3>
 <p>mysqlnd is a so nice extension... It is even extensible !
 This means that it's been thought to be extensible without further changing its source code. mysqlnd is plugable, and one may activate other PHP extensions which are in fact plugins for mysqlnd which will add new features.
@@ -470,7 +468,7 @@ Plugins may be developed in C and some already exist :</p>
 <p>mysqlnd_uh : UserHandler Hooks : Write your own plugin using PHP (and not C). Branch on different hooks into the low level mysqlnd layer, and implement whatever you want : SQL injection protections, load balancers, loggers, etc...</p>
 <h2 id="conclusion">Conclusion<a href="#conclusion" class="anchor">#</a></h2>
 <p>So, I hope you know have a better understanding on how PHP communicates with MySQL servers. I also hope you noticed how mysqlnd can help you implementing so many ideas, and how its licence allows you to do the same things you'd do using just PHP and the PHP licence.</p>
-<p>Special thanks to Ulf Wendel, Andrey Hristov, Georg Richter and Johannes Schl&uuml;ter ; main mysqlnd creators.</p>
+<p>Special thanks to Ulf Wendel, Andrey Hristov, Georg Richter and Johannes Schlüter ; main mysqlnd creators.</p>
     </div>
 
       </article>
@@ -479,10 +477,8 @@ Plugins may be developed in C and some already exist :</p>
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

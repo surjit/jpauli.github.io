@@ -69,7 +69,7 @@ In PHP 7, the OPCache extension I <a href="http://jpauli.github.io/2015/03/05/op
 <p>Under many Unix flavors, you are povided with two APIs to play with virtual memory mappings. The so-well-called <code>mmap()</code> function (prefered, because it really plays with memory mappings and can really allocate huge pages if asked for), or <code>madvise()</code> (that just hints (adivses) the Kernel about a memory zone, f.e that the current page should be turned to huge page, with no guaranty it will be done).
 First, you need to make sure your OS has huge page support and some free huge pages; If not, allocation will fail. Tune <em>vm.nr_hugepages</em> using sysctl.
 Then, cat /proc/meminfo to confirm some huge pages are available.</p>
-<pre><code>&gt; cat /proc/meminfo
+<pre><code>> cat /proc/meminfo
 HugePages_Total:      20
 HugePages_Free:       20
 HugePages_Rsvd:        0
@@ -78,10 +78,10 @@ Hugepagesize:       2048 kB</code></pre>
 <p>Here, 20 huge pages are available, each huge page is 2Mb size (Linux can use huge pages of up to 1Gb on X86/64 platforms, thus I dont recommand such a size for PHP, but RDBMS will benefit from such page sizes).</p>
 <p>Then we may use the API. Of course, you can't map a memory segment on a huge page if this latter is not aligned on huge page boundary, so first, you must align your address (what must anyway be done for overall CPU efficiency), then ask for the Kernel to map it using a huge page. We will align it using the C language as in the example, the to-be-aligned buffer comes from the heap, though some alignment functions exist (like <code>posix_memalign()</code>), but for crossplatform compatibility, we won't make use of this latter.</p>
 <p>Here is the simple little example :</p>
-<pre><code>#include &lt;stdio.h&gt;
-#include &lt;sys/mman.h&gt;
-#include &lt;string.h&gt;
-#include &lt;stdlib.h&gt;
+<pre><code>#include <stdio.h>
+#include <sys/mman.h>
+#include <string.h>
+#include <stdlib.h>
 
 #define ALIGN 1024*1024*2 /* We assume huge pages are 2Mb */
 #define SIZE 1024*1024*32 /* Let's allocate 32Mb */
@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
     printf("buf is at: %p\n", buf);
 
     */ Align on ALIGN boundary */
-    aligned_buf = (void *) ( ((unsigned long)buf + ALIGN - 1) &amp; ~(ALIGN -1) );
+    aligned_buf = (void *) ( ((unsigned long)buf + ALIGN - 1) & ~(ALIGN -1) );
 
     printf("aligned buf: %p\n", aligned_buf);
 
@@ -132,7 +132,7 @@ Hugepagesize:       2048 kB</code></pre>
 <h3 id="php-7-code-segment-mapped-on-huge-pages">PHP 7 code segment mapped on huge pages<a href="#php-7-code-segment-mapped-on-huge-pages" class="anchor">#</a></h3>
 <p>If you look at your PHP 7 code segment, you'll see that this latter is pretty big. On my LP64 X86/64 traditionnal machine, it is about 9Mb large (for a debug build).
 Let's see it :</p>
-<pre><code>&gt; cat /proc/8435/maps
+<pre><code>> cat /proc/8435/maps
 00400000-00db8000 r-xp 00000000 08:01 4196579                            /home/julien.pauli/php70/nzts/bin/php /* text segment */
 00fb8000-01056000 rw-p 009b8000 08:01 4196579                            /home/julien.pauli/php70/nzts/bin/php
 01056000-01073000 rw-p 00000000 00:00 0 
@@ -144,7 +144,7 @@ That means that the PHP binary machine instructions total 9Mb. Yes, PHP is growi
 <p>PHP text segment is 9Mb large so far on LP64. That means that classical compiled (debug) PHP machine instructions actually weigh 9Mb.</p>
 </blockquote>
 <p>If we look further at this memory segment, we will see that it is mapped by the Kernel using traditional 4Kb large pages :</p>
-<pre><code>&gt; cat /proc/8435/smaps
+<pre><code>> cat /proc/8435/smaps
 00400000-00db8000 r-xp 00000000 08:01 4196579  /home/julien.pauli/php70/nzts/bin/php
 Size:               9952 kB /* VM size */
 Rss:                1276 kB /* PM busy load */
@@ -178,12 +178,12 @@ This is what OPCache does.</p>
         char perm[5], dev[6], name[MAXPATHLEN];
         int ret;
 
-        ret = fscanf(f, "%lx-%lx %4s %lx %5s %ld %s\n", &amp;start, &amp;end, perm, &amp;offset, dev, &amp;inode, name);
-        if (ret == 7 &amp;&amp; perm[0] == 'r' &amp;&amp; perm[1] == '-' &amp;&amp; perm[2] == 'x' &amp;&amp; name[0] == '/') {
+        ret = fscanf(f, "%lx-%lx %4s %lx %5s %ld %s\n", &start, &end, perm, &offset, dev, &inode, name);
+        if (ret == 7 && perm[0] == 'r' && perm[1] == '-' && perm[2] == 'x' && name[0] == '/') {
             long unsigned int  seg_start = ZEND_MM_ALIGNED_SIZE_EX(start, huge_page_size);
-            long unsigned int  seg_end = (end &amp; ~(huge_page_size-1L));
+            long unsigned int  seg_end = (end & ~(huge_page_size-1L));
 
-            if (seg_end &gt; seg_start) {
+            if (seg_end > seg_start) {
                 zend_accel_error(ACCEL_LOG_DEBUG, "remap to huge page %lx-%lx %s \n", seg_start, seg_end, name);
                 accel_remap_huge_pages((void*)seg_start, seg_end - seg_start, name, offset + seg_start - start);
             }
@@ -288,10 +288,8 @@ The TLB cache is then more often used, much more, leading to less memory accesse
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

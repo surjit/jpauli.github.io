@@ -92,12 +92,12 @@ int zend_std_get_closure(zval *obj, zend_class_entry **ce_ptr, zend_function **f
 
     ce = Z_OBJCE_P(obj);
 
-    if (zend_hash_find(&amp;ce-&gt;function_table, ZEND_INVOKE_FUNC_NAME, sizeof(ZEND_INVOKE_FUNC_NAME), (void**)fptr_ptr) == FAILURE) {
+    if (zend_hash_find(&ce->function_table, ZEND_INVOKE_FUNC_NAME, sizeof(ZEND_INVOKE_FUNC_NAME), (void**)fptr_ptr) == FAILURE) {
         return FAILURE;
     }
 
     *ce_ptr = ce;
-    if ((*fptr_ptr)-&gt;common.fn_flags &amp; ZEND_ACC_STATIC) {
+    if ((*fptr_ptr)->common.fn_flags & ZEND_ACC_STATIC) {
         if (zobj_ptr) {
             *zobj_ptr = NULL;
         }
@@ -116,10 +116,10 @@ The engine checks the argument type, against a string representing a function, a
 
 /* ... here, code to take care of string and array arguments ... */
 
-} else if (OP2_TYPE != IS_CONST &amp;&amp; OP2_TYPE != IS_TMP_VAR &amp;&amp;
-    EXPECTED(Z_TYPE_P(function_name) == IS_OBJECT) &amp;&amp; /* we are an object ? */
-    Z_OBJ_HANDLER_P(function_name, get_closure) &amp;&amp; /* we have a get_closure() handler ? */
-    Z_OBJ_HANDLER_P(function_name, get_closure)(function_name, &amp;call-&gt;called_scope, &amp;call-&gt;fbc, &amp;call-&gt;object TSRMLS_CC) == SUCCESS) { 
+} else if (OP2_TYPE != IS_CONST && OP2_TYPE != IS_TMP_VAR &&
+    EXPECTED(Z_TYPE_P(function_name) == IS_OBJECT) && /* we are an object ? */
+    Z_OBJ_HANDLER_P(function_name, get_closure) && /* we have a get_closure() handler ? */
+    Z_OBJ_HANDLER_P(function_name, get_closure)(function_name, &call->called_scope, &call->fbc, &call->object TSRMLS_CC) == SUCCESS) { 
         /* the handler can take care of the call ? */
 
     /* ... */
@@ -155,13 +155,13 @@ A class which could'nt be user manipulable, that's why we declared it as final, 
     zend_class_entry ce;
 
     INIT_CLASS_ENTRY(ce, "Closure", closure_functions); /* the class is named "Closure" */
-    zend_ce_closure = zend_register_internal_class(&amp;ce TSRMLS_CC);
-    zend_ce_closure-&gt;ce_flags |= ZEND_ACC_FINAL_CLASS; /* The class is final */
-    zend_ce_closure-&gt;create_object = zend_closure_new; /* function to run when an object is created */
-    zend_ce_closure-&gt;serialize = zend_class_serialize_deny; /* function to run on serialize() call */
-    zend_ce_closure-&gt;unserialize = zend_class_unserialize_deny; /* function to run on unserialize() call */
+    zend_ce_closure = zend_register_internal_class(&ce TSRMLS_CC);
+    zend_ce_closure->ce_flags |= ZEND_ACC_FINAL_CLASS; /* The class is final */
+    zend_ce_closure->create_object = zend_closure_new; /* function to run when an object is created */
+    zend_ce_closure->serialize = zend_class_serialize_deny; /* function to run on serialize() call */
+    zend_ce_closure->unserialize = zend_class_unserialize_deny; /* function to run on unserialize() call */
 
-    memcpy(&amp;closure_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
+    memcpy(&closure_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
     closure_handlers.get_constructor = zend_closure_get_constructor; /* function to run when fetching the constructor */
     closure_handlers.get_method = zend_closure_get_method; /* function to run when fetching a method */
     closure_handlers.write_property = zend_closure_write_property; /* function to run when willing to write to an attribute */
@@ -191,7 +191,7 @@ static zval *zend_closure_read_property(zval *object, zval *member, int type, co
 {
     ZEND_CLOSURE_PROPERTY_ERROR();
     Z_ADDREF(EG(uninitialized_zval));
-    return &amp;EG(uninitialized_zval);
+    return &EG(uninitialized_zval);
 }
 
 static void zend_closure_write_property(zval *object, zval *member, zval *value, const zend_literal *key TSRMLS_DC)
@@ -219,7 +219,7 @@ static void zend_closure_unset_property(zval *object, zval *member, const zend_l
 }</code></pre>
 <p>Try it :</p>
 <pre><code>$a = function() { };
-$a-&gt;foo = 'bar';  /* Fatal error : Closure object cannot have properties */</code></pre>
+$a->foo = 'bar';  /* Fatal error : Closure object cannot have properties */</code></pre>
 <p>Ok, here we can see that once more, thanks to Zend engine 2 object handlers, we managed to lock every operations the user could try to perform on such a class (and objects of it).</p>
 <h3 id="and-the-magic-happens">And the magic happens<a href="#and-the-magic-happens" class="anchor">#</a></h3>
 <p>Now, we're gonna see how the compiler compiles a PHP function into an object of class Closure when it sees it is an anonymous function, and how it is then launched.</p>
@@ -228,12 +228,12 @@ So the compiler starts by firing a <code>zend_do_begin_function_declaration()</c
 <p>For anonymous functions though, the steps that change from regular functions is that the compiler will name the function "{closure}" (as it couldn't fetch a name from the syntax, because you know : "anonymous" function) , and it will NOT register that function name into the global function table (this step is done while early binding the function).</p>
 <p>So the compiler will compile many anonymous functions, without adding their name to the global function table (obviously : they all got the same name). That seems like leaking and doing useless things. Not really, as the compiler for such functions, will generate a special OPCode for the executor to do some job later : <strong>ZEND_DECLARE_LAMBDA_FUNCTION</strong></p>
 <p>Here is the important part of the PHP parser code :</p>
-<pre><code>function is_reference { zend_do_begin_lambda_function_declaration(&amp;$$, &amp;$1, $2.op_type, 0 TSRMLS_CC); }
+<pre><code>function is_reference { zend_do_begin_lambda_function_declaration(&$$, &$1, $2.op_type, 0 TSRMLS_CC); }
     '(' parameter_list ')' lexical_vars
-    '{' inner_statement_list '}' { zend_do_end_function_declaration(&amp;$1 TSRMLS_CC); $$ = $3; }
-|    T_STATIC function is_reference { zend_do_begin_lambda_function_declaration(&amp;$$, &amp;$2, $3.op_type, 1 TSRMLS_CC); }
+    '{' inner_statement_list '}' { zend_do_end_function_declaration(&$1 TSRMLS_CC); $$ = $3; }
+|   T_STATIC function is_reference { zend_do_begin_lambda_function_declaration(&$$, &$2, $3.op_type, 1 TSRMLS_CC); }
     '(' parameter_list ')' lexical_vars
-    '{' inner_statement_list '}' { zend_do_end_function_declaration(&amp;$2 TSRMLS_CC); $$ = $4; }</code></pre>
+    '{' inner_statement_list '}' { zend_do_end_function_declaration(&$2 TSRMLS_CC); $$ = $4; }</code></pre>
 <p>When meeting an anonymous function, the parser will call for <code>zend_do_begin_lambda_function_declaration()</code> from the compiler. Here it is :</p>
 <pre><code>void zend_do_begin_lambda_function_declaration(znode *result, znode *function_token, int return_reference, int is_static TSRMLS_DC)
 {
@@ -243,23 +243,23 @@ So the compiler starts by firing a <code>zend_do_begin_function_declaration()</c
     zend_op       *current_op;
 
     function_name.op_type = IS_CONST;
-    ZVAL_STRINGL(&amp;function_name.u.constant, "{closure}", sizeof("{closure}")-1, 1); /* the function will be named '{closure}' */
+    ZVAL_STRINGL(&function_name.u.constant, "{closure}", sizeof("{closure}")-1, 1); /* the function will be named '{closure}' */
 
     /* classical compilation steps, shared with classical named PHP functions */
-    zend_do_begin_function_declaration(function_token, &amp;function_name, 0, return_reference, NULL TSRMLS_CC);
+    zend_do_begin_function_declaration(function_token, &function_name, 0, return_reference, NULL TSRMLS_CC);
 
-    result-&gt;op_type = IS_TMP_VAR;
-    result-&gt;u.op.var = get_temporary_variable(current_op_array);
+    result->op_type = IS_TMP_VAR;
+    result->u.op.var = get_temporary_variable(current_op_array);
 
-    current_op = &amp;current_op_array-&gt;opcodes[current_op_number];
-    current_op-&gt;opcode = ZEND_DECLARE_LAMBDA_FUNCTION; /* OPCode generation */
-    zend_del_literal(current_op_array, current_op-&gt;op2.constant);
-    SET_UNUSED(current_op-&gt;op2);
-    SET_NODE(current_op-&gt;result, result);
+    current_op = &current_op_array->opcodes[current_op_number];
+    current_op->opcode = ZEND_DECLARE_LAMBDA_FUNCTION; /* OPCode generation */
+    zend_del_literal(current_op_array, current_op->op2.constant);
+    SET_UNUSED(current_op->op2);
+    SET_NODE(current_op->result, result);
     if (is_static) { /* static closures case */
-        CG(active_op_array)-&gt;fn_flags |= ZEND_ACC_STATIC;
+        CG(active_op_array)->fn_flags |= ZEND_ACC_STATIC;
     }
-    CG(active_op_array)-&gt;fn_flags |= ZEND_ACC_CLOSURE;
+    CG(active_op_array)->fn_flags |= ZEND_ACC_CLOSURE;
 }</code></pre>
 <p>We can see that the compiler effectively calls for generic function declaration function, <code>zend_do_begin_function_declaration()</code>, but generates an OPCode <strong>ZEND_DECLARE_LAMBDA_FUNCTION</strong>.
 This is very different from classical named functions, where no OPCode at all is generated (if the function is not declared conditionnaly), and where the function name is registered into the global function table for it to be looked for later, when called into the executor.</p>
@@ -272,12 +272,12 @@ This is very different from classical named functions, where no OPCode at all is
 {
     /* ... */
 
-    if (UNEXPECTED((op_array-&gt;common.fn_flags &amp; ZEND_ACC_STATIC) || 
-            (EX(prev_execute_data) &amp;&amp;
-             EX(prev_execute_data)-&gt;function_state.function-&gt;common.fn_flags &amp; ZEND_ACC_STATIC))) {
-        zend_create_closure(&amp;EX_T(opline-&gt;result.var).tmp_var, (zend_function *) op_array,  EG(called_scope), NULL TSRMLS_CC);
+    if (UNEXPECTED((op_array->common.fn_flags & ZEND_ACC_STATIC) || 
+            (EX(prev_execute_data) &&
+             EX(prev_execute_data)->function_state.function->common.fn_flags & ZEND_ACC_STATIC))) {
+        zend_create_closure(&EX_T(opline->result.var).tmp_var, (zend_function *) op_array,  EG(called_scope), NULL TSRMLS_CC);
     } else {
-        zend_create_closure(&amp;EX_T(opline-&gt;result.var).tmp_var, (zend_function *) op_array,  EG(scope), EG(This) TSRMLS_CC);
+        zend_create_closure(&EX_T(opline->result.var).tmp_var, (zend_function *) op_array,  EG(scope), EG(This) TSRMLS_CC);
     }
 
     CHECK_EXCEPTION();
@@ -292,25 +292,25 @@ This is very different from classical named functions, where no OPCode at all is
     object_init_ex(res, zend_ce_closure); /* create a closure object */
     closure = (zend_closure *)zend_object_store_get_object(res TSRMLS_CC);
 
-    closure-&gt;func = *func; /* pass its function ; here the belt is buckled */
-    closure-&gt;func.common.prototype = NULL;
-    closure-&gt;func.common.fn_flags |= ZEND_ACC_CLOSURE; /* flag the zend_function as beeing of type closure */
+    closure->func = *func; /* pass its function ; here the belt is buckled */
+    closure->func.common.prototype = NULL;
+    closure->func.common.fn_flags |= ZEND_ACC_CLOSURE; /* flag the zend_function as beeing of type closure */
 
-    if ((scope == NULL) &amp;&amp; (this_ptr != NULL)) {
+    if ((scope == NULL) && (this_ptr != NULL)) {
         scope = zend_ce_closure;
     }
 
     /* ... */
 
-    closure-&gt;this_ptr = NULL;
-    closure-&gt;func.common.scope = scope;
+    closure->this_ptr = NULL;
+    closure->func.common.scope = scope;
     if (scope) {
-        closure-&gt;func.common.fn_flags |= ZEND_ACC_PUBLIC;
-        if (this_ptr &amp;&amp; (closure-&gt;func.common.fn_flags &amp; ZEND_ACC_STATIC) == 0) {
-            closure-&gt;this_ptr = this_ptr;
+        closure->func.common.fn_flags |= ZEND_ACC_PUBLIC;
+        if (this_ptr && (closure->func.common.fn_flags & ZEND_ACC_STATIC) == 0) {
+            closure->this_ptr = this_ptr;
             Z_ADDREF_P(this_ptr);
         } else {
-            closure-&gt;func.common.fn_flags |= ZEND_ACC_STATIC;
+            closure->func.common.fn_flags |= ZEND_ACC_STATIC;
         }
     }
 }</code></pre>
@@ -326,18 +326,18 @@ This is very different from classical named functions, where no OPCode at all is
     }
 
     closure = (zend_closure *)zend_object_store_get_object(obj TSRMLS_CC);
-    *fptr_ptr = &amp;closure-&gt;func; /* here we are, the function to execute is the one that got compiled before */
+    *fptr_ptr = &closure->func; /* here we are, the function to execute is the one that got compiled before */
 
-    if (closure-&gt;this_ptr) {
+    if (closure->this_ptr) {
         if (zobj_ptr) {
-            *zobj_ptr = closure-&gt;this_ptr;
+            *zobj_ptr = closure->this_ptr;
         }
-        *ce_ptr = Z_OBJCE_P(closure-&gt;this_ptr);
+        *ce_ptr = Z_OBJCE_P(closure->this_ptr);
     } else {
         if (zobj_ptr) {
             *zobj_ptr = NULL;
         }
-        *ce_ptr = closure-&gt;func.common.scope;
+        *ce_ptr = closure->func.common.scope;
     }
     return SUCCESS;
 }</code></pre>
@@ -363,14 +363,14 @@ ZEND_VM_HANDLER(153, ZEND_DECLARE_LAMBDA_FUNCTION, CONST, UNUSED)
 {
     /* ... */
 
-    if (UNEXPECTED((op_array-&gt;common.fn_flags &amp; ZEND_ACC_STATIC) || 
-            (EX(prev_execute_data) &amp;&amp;
-             EX(prev_execute_data)-&gt;function_state.function-&gt;common.fn_flags &amp; ZEND_ACC_STATIC))) {
+    if (UNEXPECTED((op_array->common.fn_flags & ZEND_ACC_STATIC) || 
+            (EX(prev_execute_data) &&
+             EX(prev_execute_data)->function_state.function->common.fn_flags & ZEND_ACC_STATIC))) {
         /* if we are creating a closure into a static call -or we declared the closure explicitely static- pass the called_scope to the closure body */
-        zend_create_closure(&amp;EX_T(opline-&gt;result.var).tmp_var, (zend_function *) op_array,  EG(called_scope), NULL TSRMLS_CC);
+        zend_create_closure(&EX_T(opline->result.var).tmp_var, (zend_function *) op_array,  EG(called_scope), NULL TSRMLS_CC);
     } else {
         /* else, pass the object scope to the closure body */
-        zend_create_closure(&amp;EX_T(opline-&gt;result.var).tmp_var, (zend_function *) op_array,  EG(scope), EG(This) TSRMLS_CC);
+        zend_create_closure(&EX_T(opline->result.var).tmp_var, (zend_function *) op_array,  EG(scope), EG(This) TSRMLS_CC);
     }
 
     /* ... */
@@ -389,7 +389,7 @@ class Bar extends Foo { }
 
 $foo = new Foo;
 
-$closure = $foo-&gt;hello(); /* into hello() $this exists, the closure will then be created and bound to this $this and to the class scope */
+$closure = $foo->hello(); /* into hello() $this exists, the closure will then be created and bound to this $this and to the class scope */
 $closure = Foo::world(); /* world() is a STATIC function, so there will be NO $this passed to the Closure, but only its scope : Foo */
 $closure = Bar::world(); /* world() is a STATIC function, so there will be NO $this passed to the Closure, but only its scope : Bar */</code></pre>
 <p>That's how its done.</p>
@@ -405,7 +405,7 @@ $closure = Bar::world(); /* world() is a STATIC function, so there will be NO $t
 
 $foo = new Foo;
 
-$closure = $foo-&gt;hello(); /* the $closure has no $this access, because it was declared static itself */</code></pre>
+$closure = $foo->hello(); /* the $closure has no $this access, because it was declared static itself */</code></pre>
 <p>Now let's talk about the scope, that is the current class where in the Closure resides (which is used to check for PPP access).
 The scope is the class's which was used for the call to create the closure, like in the example above, with Foo and Bar classes.</p>
 <blockquote>
@@ -415,9 +415,9 @@ The scope is the class's which was used for the call to create the closure, like
 <pre><code>class Foo { private $a = 42; }
 $foo = new Foo;
 
-$closure = function() { var_dump($this-&gt;a); };
+$closure = function() { var_dump($this->a); };
 
-$foo_closure = $closure-&gt;bindTo($foo);
+$foo_closure = $closure->bindTo($foo);
 
 $foo_closure(); /* 42 */</code></pre>
 <p>The above code displays 42.</p>
@@ -429,9 +429,9 @@ $foo = new Foo;
 
 class Bar { }
 
-$closure = function() { var_dump($this-&gt;a); };
+$closure = function() { var_dump($this->a); };
 
-$foo_closure = $closure-&gt;bindTo($foo, 'Bar'); /* Pass the scope of Bar */
+$foo_closure = $closure->bindTo($foo, 'Bar'); /* Pass the scope of Bar */
 
 $foo_closure(); /* fatal error, accessing a private member */</code></pre>
 <p>Now the new closure still has a <code>$this</code> representing <code>$foo</code>, but the scope it will act into is the scope of Bar. Hence, in Bar, you can't access Foo's $a, as both Foo's $a is private, and Bar doesn't even extend Foo.</p>
@@ -445,10 +445,10 @@ $foo_closure(); /* fatal error, accessing a private member */</code></pre>
 Reflection will ask the class for some methods, particularly <code>__invoke()</code> , and we saw together that this <code>Closure::__invoke()</code> simply does not exist, it is not used by PHP's closures, it is short circuited by redefining a <code>get_closure()</code> handler that does the job.</p>
 <p>So we need to implement some more handlers for Reflection to be happy. <code>ReflectionFunction::getClosureScopeClass()</code>, <code>ReflectionFunction::getClosure()</code>, <code>ReflectionFunction::isClosure()</code>.</p>
 <p>Try this :</p>
-<pre><code>var_dump ((new ReflectionClass('Closure'))-&gt;getMethods());</code></pre>
+<pre><code>var_dump ((new ReflectionClass('Closure'))->getMethods());</code></pre>
 <p>You will see <code>__construct()</code> and <code>bind()</code>/<code>bindTo()</code> , but not <code>__invoke()</code>, because the Closure class simply has no <code>__invoke()</code> method.</p>
 <p>Now try this :</p>
-<pre><code>var_dump ((new ReflectionObject(function(){}))-&gt;getMethods());</code></pre>
+<pre><code>var_dump ((new ReflectionObject(function(){}))->getMethods());</code></pre>
 <p>Here, an <code>__invoke()</code> method  will magically appear. It is faked, faked by the Closure class and a Reflection trick. It is built and specially crafted just to be shown in Reflection's output :</p>
 <pre><code>#define ZEND_INVOKE_FUNC_NAME       "__invoke"
 ZEND_API zend_function *zend_get_closure_invoke_method(zval *obj TSRMLS_DC)
@@ -457,19 +457,19 @@ ZEND_API zend_function *zend_get_closure_invoke_method(zval *obj TSRMLS_DC)
     zend_function *invoke = (zend_function*)emalloc(sizeof(zend_function));
     const zend_uint keep_flags = ZEND_ACC_RETURN_REFERENCE | ZEND_ACC_VARIADIC;
 
-    invoke-&gt;common = closure-&gt;func.common;
-    invoke-&gt;type = ZEND_INTERNAL_FUNCTION;
-    invoke-&gt;internal_function.fn_flags =
-        ZEND_ACC_PUBLIC | ZEND_ACC_CALL_VIA_HANDLER | (closure-&gt;func.common.fn_flags &amp; keep_flags);
-    invoke-&gt;internal_function.handler = ZEND_MN(Closure___invoke);
-    invoke-&gt;internal_function.module = 0;
-    invoke-&gt;internal_function.scope = zend_ce_closure;
-    invoke-&gt;internal_function.function_name = estrndup(ZEND_INVOKE_FUNC_NAME, sizeof(ZEND_INVOKE_FUNC_NAME)-1);
+    invoke->common = closure->func.common;
+    invoke->type = ZEND_INTERNAL_FUNCTION;
+    invoke->internal_function.fn_flags =
+        ZEND_ACC_PUBLIC | ZEND_ACC_CALL_VIA_HANDLER | (closure->func.common.fn_flags & keep_flags);
+    invoke->internal_function.handler = ZEND_MN(Closure___invoke);
+    invoke->internal_function.module = 0;
+    invoke->internal_function.scope = zend_ce_closure;
+    invoke->internal_function.function_name = estrndup(ZEND_INVOKE_FUNC_NAME, sizeof(ZEND_INVOKE_FUNC_NAME)-1);
     return invoke;
 }</code></pre>
 <p>This <code>zend_get_closure_invoke_method()</code> that creates a fake <code>__invoke()</code> for the engine, is also used when one directly calls <code>__invoke()</code> on a closure.</p>
 <pre><code>$a = function() { };
-$a-&gt;__invoke();</code></pre>
+$a->__invoke();</code></pre>
 <p>But you shouldn't do that. Doing this, you instruct the engine to fetch a method, whereas if you were using the <code>$a()</code> syntax, we saw that the engine directly fetches the function to run using the <code>get_closure()</code> handler.
 The problem with the explicit <code>__invoke()</code> call is that you turn around, and ask the engine much more work to do. It has to fetch the method, it will then run the <code>get_method()</code> handler on the object, which is of class Closure. Here is its code :</p>
 <pre><code>#define ZEND_INVOKE_FUNC_NAME       "__invoke"
@@ -480,7 +480,7 @@ static zend_function *zend_closure_get_method(zval **object_ptr, char *method_na
 
     lc_name = do_alloca(method_len + 1, use_heap);
     zend_str_tolower_copy(lc_name, method_name, method_len);
-    if ((method_len == sizeof(ZEND_INVOKE_FUNC_NAME)-1) &amp;&amp;
+    if ((method_len == sizeof(ZEND_INVOKE_FUNC_NAME)-1) &&
         memcmp(lc_name, ZEND_INVOKE_FUNC_NAME, sizeof(ZEND_INVOKE_FUNC_NAME)-1) == 0
     ) {
         free_alloca(lc_name, use_heap);
@@ -491,11 +491,11 @@ static zend_function *zend_closure_get_method(zval **object_ptr, char *method_na
 }</code></pre>
 <p>It checks if you call a method named "__invoke", you can't call anything else, as if you do, you jump into the default <code>get_method()</code> handler, which will tell you that the Closure class has no "foobar" method.
 So here, we called <code>__invoke()</code>, so we return <code>zend_get_closure_invoke_method()</code> which code we already analyzed. It creates a "fake" <code>__invoke()</code>, but with a real handler :</p>
-<pre><code>invoke-&gt;internal_function.handler = ZEND_MN(Closure___invoke);</code></pre>
+<pre><code>invoke->internal_function.handler = ZEND_MN(Closure___invoke);</code></pre>
 <p>And here is its awful code :</p>
 <pre><code>ZEND_METHOD(Closure, __invoke)
 {
-    zend_function *func = EG(current_execute_data)-&gt;function_state.function;
+    zend_function *func = EG(current_execute_data)->function_state.function;
     zval ***arguments;
     zval *closure_result_ptr = NULL;
 
@@ -504,16 +504,16 @@ So here, we called <code>__invoke()</code>, so we return <code>zend_get_closure_
         efree(arguments);
         zend_error(E_RECOVERABLE_ERROR, "Cannot get arguments for calling closure");
         RETVAL_FALSE;
-    } else if (call_user_function_ex(CG(function_table), NULL, this_ptr, &amp;closure_result_ptr, ZEND_NUM_ARGS(), arguments, 1, NULL TSRMLS_CC) == FAILURE) {
+    } else if (call_user_function_ex(CG(function_table), NULL, this_ptr, &closure_result_ptr, ZEND_NUM_ARGS(), arguments, 1, NULL TSRMLS_CC) == FAILURE) {
         RETVAL_FALSE;
     } else if (closure_result_ptr) {
-        zval_ptr_dtor(&amp;return_value);
+        zval_ptr_dtor(&return_value);
         *return_value_ptr = closure_result_ptr;
     }
     efree(arguments);
 
     /* destruct the function also, then - we have allocated it in get_method */
-    efree((char*)func-&gt;internal_function.function_name);
+    efree((char*)func->internal_function.function_name);
     efree(func);
 }</code></pre>
 <p>It does a <code>call_user_function()</code>. That is, you launch <code>__invoke()</code>, you pass through 2 handlers ending in running a <code>call_user_function()</code>. Remember that a <code>call_user_function()</code> is really bad for performances, because it basicly pushes another stack frame and another function onto the engine stack, whereas we are already calling a function. It's like using <code>call_user_func()</code> in PHP where using a direct call is possible : just a pure waste of resources, for the exact same result.</p>
@@ -535,10 +535,8 @@ The same has been done when generators have been added to PHP5.5, but this time,
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

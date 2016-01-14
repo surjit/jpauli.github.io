@@ -54,11 +54,11 @@
 <p>Everybody is aware of the "output buffering" layer in PHP. This blog post is about how it works, how it's been
 implemented in PHP source code, and how to interact with it from PHP. This layer is not complex, but often misunderstood,
 or at least, not fully mastered by PHP developers.
-Let's try to fix that together. We'll talk about PHP &gt;=5.4, should you know that many things have changed starting 5.4
+Let's try to fix that together. We'll talk about PHP >=5.4, should you know that many things have changed starting 5.4
 about the OB layer, in fact, it has been completely rewritten and broke compatibility in some ways with PHP 5.3 (documented).</p>
 <h2 id="what-is-the-output-buffer">What is the output buffer ?<a href="#what-is-the-output-buffer" class="anchor">#</a></h2>
 <p>PHP's output stream contains bytes, usually text that the developer asks PHP to display, often using <code>echo</code> statements or <code>printf()</code>.
-The first thing you should know is that any function outputing something will use the output buffer, this, from PHP land. When you 
+The first thing you should know is that any function outputing something will use the output buffer, this, from PHP land. When you
 live into the extension land, you may access functions that writes directly into SAPI preventing any OB layer above.
 The C API is documented into <a href="http://lxr.php.net/xref/PHP_5_5/main/php_output.h">main/php_output.h</a> and as usual gives us many informations,
 such as the default buffer size f.e.</p>
@@ -67,7 +67,7 @@ buffering your output).
 And the last thing to remember is that the output buffer layer behaves differently in accordance with the SAPI you are using
 (web or cli).
 Let's first draw the main picture that explains everything</p>
-<p><img alt="PHP ob layers" src="../../../img/ob/ob_main.png"></p>
+<p><img src="../../../img/ob/ob_main.png" alt="PHP ob layers"></p>
 <p>Like you can see, we can distinguish between 3 logical layers of buffer for the output management into PHP.
 2 of them belong to the famous "output buffering", and one last lives into the SAPI.
 Those are the PHP layers, when the flow of output bytes leaves PHP to enter the bottom layer in the main architecture,
@@ -82,7 +82,7 @@ directly hits the SAPI layer. Moreover, in CLI, <em>implicit_flush</em> is also 
 <a href="http://lxr.php.net/xref/PHP_5_5/main/output.c#1095">the source code is really eloquent about it</a> : when <em>implicit_flush</em> is turned
 on, the SAPI layer buffer is asked to be flushed anytime it is written to.
 To conclude : anytime you write any output with the CLI SAPI, it will be asked to be immediately thrown to the bottom layer, which
-is the stdout pipe <a href="http://lxr.php.net/xref/PHP_5_5/sapi/cli/php_cli.c#273">beeing write()en</a> and then 
+is the stdout pipe <a href="http://lxr.php.net/xref/PHP_5_5/sapi/cli/php_cli.c#273">beeing write()en</a> and then
 <a href="http://lxr.php.net/xref/PHP_5_5/sapi/cli/php_cli.c#328">fflush()ed</a>. Easy.</p>
 <h2 id="default-php-output-buffer-layer">Default PHP output buffer layer<a href="#default-php-output-buffer-layer" class="anchor">#</a></h2>
 <p>So far so good, if you use a SAPI different from CLI, for example PHP-FPM, you'll be able to play with those 3 buffer-related INI settings :</p>
@@ -93,7 +93,7 @@ is the stdout pipe <a href="http://lxr.php.net/xref/PHP_5_5/sapi/cli/php_cli.c#2
 PHP may run any script. So when it meets an <code>ini_set()</code> about one of those 3 settings, it effectively changes the value, but this new value won't be used anywhere
 as it is too late : the output buffer layer is already started and active.
 Change those by editing php.ini or using the <em>-d</em> switch to the PHP binary.</p>
-<p>Ok, so by default, the php.ini shipped with the actual PHP distribution gives <em>output_buffering</em> the value of "4096" (bytes). If you don't use any php.ini 
+<p>Ok, so by default, the php.ini shipped with the actual PHP distribution gives <em>output_buffering</em> the value of "4096" (bytes). If you don't use any php.ini
 (or start PHP with the <em>-n</em> switch), the default will be <em>"0"</em>, aka disabled.
 If you hardcode the value to <em>"On"</em>, then the <a href="http://lxr.php.net/xref/PHP_5_5/main/php_output.h#91">default output buffer size</a> will be used
 (16Kb).
@@ -164,7 +164,7 @@ echo "hello";
 /* 0- FooBarbazz\n 1- Hello\n */</code></pre>
 <h2 id="output-buffering-internals">Output buffering internals<a href="#output-buffering-internals" class="anchor">#</a></h2>
 <p>Since 5.4, the entire output buffering layer has been rewritten (by Michael Wallner). The code was a mess before, and many things were hard to do and buggy.
-Read on <a href="http://marc.info/?l=php-internals&amp;m=114104110826804&amp;w=2"><a href="http://marc.info/?l=php-internals&amp;m=114104110826804&amp;w=2">http://marc.info/?l=php-internals&amp;m=114104110826804&amp;w=2</a> for more informations.
+Read on <a href="http://marc.info/?l=php-internals&m=114104110826804&w=2"></a><a href="http://marc.info/?l=php-internals&m=114104110826804&w=2">http://marc.info/?l=php-internals&m=114104110826804&w=2</a> for more informations.
 PHP 5.4 starts with a new code base, which is much more clean and designed, offers new features and has little breaks against 5.3. Nice !</p>
 <p>One of the nicest feature added then is the possibility for extensions to declare their output buffer callback as conflicting with another one provided
 by another extension. Before that, it was impossible -when designing an extension playing with the output buffer- to fully master the impact knowing
@@ -183,12 +183,12 @@ static int myext_output_handler(void **nothing, php_output_context *output_conte
 {
     char *dup = NULL;
 
-    dup = estrndup(output_context-&gt;in.data, output_context-&gt;in.used);
-    php_strtoupper(dup, output_context-&gt;in.used);
+    dup = estrndup(output_context->in.data, output_context->in.used);
+    php_strtoupper(dup, output_context->in.used);
 
-    output_context-&gt;out.data = dup;
-    output_context-&gt;out.used = output_context-&gt;in.used;
-    output_context-&gt;out.free = 1;
+    output_context->out.data = dup;
+    output_context->out.used = output_context->in.used;
+    output_context->out.free = 1;
 
     return SUCCESS;
 }
@@ -243,10 +243,8 @@ PHP extensions may also declare callbacks to be run on every buffer, for example
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>

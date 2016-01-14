@@ -126,7 +126,7 @@ This handler can use 0, 1 or 2 operands : op1 and op2, and when you run it, it c
     zend_free_op free_op1, free_op2;
 
     SAVE_OPLINE();
-    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
+    fast_add_function(&EX_T(opline->result.var).tmp_var,
         GET_OP1_ZVAL_PTR(BP_VAR_R),
         GET_OP2_ZVAL_PTR(BP_VAR_R) TSRMLS_CC);
     FREE_OP1();
@@ -155,7 +155,7 @@ zend_vm_enter:
     while (1) {  /* infinite dispatch loop */
         int ret;
 
-        if ((ret = execute_data-&gt;opline-&gt;handler(execute_data TSRMLS_CC)) &gt; 0) { /* do the job */
+        if ((ret = execute_data->opline->handler(execute_data TSRMLS_CC)) > 0) { /* do the job */
             switch (ret) {
                 case 1:
                     EG(in_execution) = original_in_execution;
@@ -176,7 +176,7 @@ zend_vm_enter:
     zend_error_noreturn(E_ERROR, "Arrived at end of main loop which shouldn't happen");
 }</code></pre>
 <p>This is what's called the main <strong>Zend Executor dispatch loop</strong>, a while(true), which executes a handler() function, terminated by an instruction (ZEND_VM_NEXT_OPCODE()) telling to change
-the <em>execute_data-&gt;opline</em> to the next one into the OPArray.</p>
+the <em>execute_data->opline</em> to the next one into the OPArray.</p>
 <pre><code>#define ZEND_VM_NEXT_OPCODE() \
 CHECK_SYMBOL_TABLES() \
 ZEND_VM_INC_OPCODE(); \
@@ -185,7 +185,7 @@ ZEND_VM_CONTINUE()
 #define ZEND_VM_INC_OPCODE() \
 OPLINE++
 
-#define OPLINE execute_data-&gt;opline
+#define OPLINE execute_data->opline
 
 #define ZEND_VM_CONTINUE()         return 0
 #define ZEND_VM_RETURN()           return 1
@@ -195,20 +195,19 @@ OPLINE++
 We will see how loops are implemented later, for the moment, just think about a basic series of operations.</p>
 <h4 id="quick-example">Quick example<a href="#quick-example" class="anchor">#</a></h4>
 <p>Here is an easy example to show the main line :</p>
-<pre><code>&lt;?php
-$a = 8;
+<pre><code>$a = 8;
 $b = 'foo';
 echo $a + $b;</code></pre>
 <p>This little simple script gets compiled into this OPArray (generated with the help of <a href="pecl.php.net/package/vld">ext/vld</a>) :</p>
 <pre><code>compiled vars:  !0 = $a, !1 = $b
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   2     0  &gt;   ASSIGN                                                   !0, 8
+   2     0  >   ASSIGN                                                   !0, 8
    3     1      ASSIGN                                                   !1, 'foo'
    4     2      ADD                                              ~2      !0, !1
          3      ECHO                                                     ~2
-   5     4    &gt; RETURN                                                   1</code></pre>
-<p><img alt="opcodes" src="../../../img/zend-vm-executor/opcodes.png"></p>
+   5     4    > RETURN                                                   1</code></pre>
+<p><img src="../../../img/zend-vm-executor/opcodes.png" alt="opcodes"></p>
 <p>Everyone is OK with that ? We could interpret it as :</p>
 <ul><li>Assign 8 to $a</li>
 <li>Assign 'foo' to $b</li>
@@ -225,7 +224,7 @@ That is to say that compiling a PHP script which is empty (no code at all), will
 <h3 id="oparray">OPArray<a href="#oparray" class="anchor">#</a></h3>
 <p>We have used this "OPArray" word many times, let's now define it. We suggested in our usage of this word, that an OPArray is a simple array containing OPCodes to be run sequencialy.
 Something like this :</p>
-<p><img alt="oparray" src="../../../img/zend-vm-executor/oparray-1.png"></p>
+<p><img src="../../../img/zend-vm-executor/oparray-1.png" alt="oparray"></p>
 <p>Well, this is not absolutely true, but it's not far from reality.
 Here is an OPArray :</p>
 <pre><code>struct _zend_op_array {
@@ -291,11 +290,10 @@ Here is an OPArray :</p>
 When you write a function in PHP, its whole body will itself be turned into its own OPArray, owning itself the compiled variables used in the function body, the try-catch-finally info used in the function body, etc...</p>
 <p>The OPArray structure is the result that the Zend compiler gives when it compiles both a PHP script or a PHP user function/method. That's why you can read informations that seem to be related only to a PHP function, but not to a PHP script : the PHP documentor comment blocks for example.</p>
 <p>Ok, back to the point, let's see what our OPArray looks like when it comes to compile our simple little example :</p>
-<pre><code>&lt;?php
-$a = 8;
+<pre><code>$a = 8;
 $b = 'foo';
 echo $a + $b;</code></pre>
-<p><img alt="oparray" src="../../../img/zend-vm-executor/oparray-compiled.png"></p>
+<p><img src="../../../img/zend-vm-executor/oparray-compiled.png" alt="oparray"></p>
 <p>As you can see from the picture above, this OPArray now contains everything needed for it to be passed into the executor. Remember that the more we compute now (at compile time, that is : while generating the OPArray), the less the executor will have to compute, and it will be able to concentrate on the "real" job : execute the compiled PHP code. We can see that every literal used has been compiled into the <em>literals</em> array (you may spot the integer 1, which comes from the ZEND_RETURN opcode compilation, this latter returning 1), every compiled variable used has been stored into <em>vars</em>, and the compiled OPCodes are here (at <em>opcodes</em> index)</p>
 <p>The other zend_op_array fields are mainly empty (zeroed), because the script we compiled is very tiny : it doesn't make any function call, it doesn't contain any try-catch structure, or any break-continue. It is not the result of the compilation of a PHP function, but a PHP script. The OPArray would have been different in such cases, with many of its other fields filled.</p>
 <h3 id="zend-vm-operand-types">Zend VM operand types<a href="#zend-vm-operand-types" class="anchor">#</a></h3>
@@ -312,8 +310,7 @@ When an OPCode handler wants to fetch (read) the information stored into one of 
 <p>Why ? For example, when an OPCode handler wants to fetch an operand (op1 or op2) of type IS_CV, representing a true PHP $variable, it will at the very first time lookup into the symbol table, storing every possible declared variable. Once the lookup is finished, assuming this one succeeds, as it is a Compiled Variable, it is very very likely that one of the next OPCode to be run in the same OPArray will ask as well to fetch this piece of information. So the first fetch caches the pointer result into the OPArray so that any further fetch of this variable value will be much more quick than the very first one.</p>
 <p>This was an explanation for IS_CV, but the same applies for every specialized type : we can optimize every access to every OPCode handler operands if we know information about their type (is it shared ? does it need to be freed ? Is it likely to be reused in few time ? etc...).</p>
 <p>Now I'm going to detail when the PHP compiler will use each type, for a very simple addition case :</p>
-<pre><code>&lt;?php
-$a + $b; // IS_CV + IS_CV
+<pre><code>$a + $b; // IS_CV + IS_CV
 1 + $a;  // IS_CONST + IS_CV
 foo() + 3 // IS_VAR + IS_CONST
 !$a + 3;  // IS_TMP + IS_CONST (2 opcodes involved here, but only one showed)</code></pre>
@@ -326,7 +323,7 @@ If each OPCode handler would have to make a switch() on its two operands, to run
     void *op1_value;
     void *op2_value;
 
-    switch (op1-&gt;type) {
+    switch (op1->type) {
         case IS_CV:
             op1_value = read_op_as_a_cv(op1);
         break;
@@ -357,7 +354,7 @@ op1 and op2 type, just to run a different fetch/read code, that would not be ver
     zend_free_op free_op1, free_op2;
 
     SAVE_OPLINE();
-    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
+    fast_add_function(&EX_T(opline->result.var).tmp_var,
         GET_OP1_ZVAL_PTR(BP_VAR_R),
         GET_OP2_ZVAL_PTR(BP_VAR_R) TSRMLS_CC);
     FREE_OP1();
@@ -400,8 +397,7 @@ static int ZEND_FASTCALL  ZEND_ADD_SPEC_TMP_TMP_HANDLER(ZEND_OPCODE_HANDLER_ARGS
 
 /* etc... I won't write here the 25 declinations ! */</code></pre>
 <p>So, the specialized handler will be run depending on the op1 and op2 types, for example :</p>
-<pre><code>&lt;?php
-$a + 2;  /* IS_CV + IS_CONST */
+<pre><code>$a + 2;  /* IS_CV + IS_CONST */
 
 /* ZEND_ADD_SPEC_CV_CONST_HANDLER() will be run in the VM */</code></pre>
 <p>The function name is built dynamically, following this simple model : <em>ZEND_{OPCODE-NAME}_SPEC_{OP1-TYPE}_{OP2-TYPE}_HANDLER()</em></p>
@@ -415,9 +411,9 @@ If now you change your source code, well, you have to recompile it to generate a
 {
     USE_OPLINE
     SAVE_OPLINE();
-    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
-        opline-&gt;op1.zv, /* fetch op1 value */
-        opline-&gt;op2.zv TSRMLS_CC); /* fetch op2 value */
+    fast_add_function(&EX_T(opline->result.var).tmp_var,
+        opline->op1.zv, /* fetch op1 value */
+        opline->op2.zv TSRMLS_CC); /* fetch op2 value */
     CHECK_EXCEPTION();
     ZEND_VM_NEXT_OPCODE();
 }
@@ -426,9 +422,9 @@ static int ZEND_FASTCALL  ZEND_ADD_SPEC_CV_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS) 
 {
     USE_OPLINE
     SAVE_OPLINE();
-    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
-        _get_zval_ptr_cv_BP_VAR_R(execute_data, opline-&gt;op1.var TSRMLS_CC), /* fetch op1 value */
-        _get_zval_ptr_cv_BP_VAR_R(execute_data, opline-&gt;op2.var TSRMLS_CC) TSRMLS_CC); /* fetch op2 value */
+    fast_add_function(&EX_T(opline->result.var).tmp_var,
+        _get_zval_ptr_cv_BP_VAR_R(execute_data, opline->op1.var TSRMLS_CC), /* fetch op1 value */
+        _get_zval_ptr_cv_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC) TSRMLS_CC); /* fetch op2 value */
     CHECK_EXCEPTION();
     ZEND_VM_NEXT_OPCODE();
 }</code></pre>
@@ -442,7 +438,7 @@ And as it is a "R" fetch : for reading, if the variable doesn't exist, this func
 {
     USE_OPLINE
 
-    array_init(&amp;EX_T(opline-&gt;result.var).tmp_var);
+    array_init(&EX_T(opline->result.var).tmp_var);
     if (IS_CONST == IS_UNUSED) {
         ZEND_VM_NEXT_OPCODE();
 #if 0 || IS_CONST != IS_UNUSED
@@ -458,7 +454,7 @@ in such a way, have a look at it :</p>
 {
     USE_OPLINE
 
-    array_init(&amp;EX_T(opline-&gt;result.var).tmp_var);
+    array_init(&EX_T(opline->result.var).tmp_var);
     if (OP1_TYPE == IS_UNUSED) {
         ZEND_VM_NEXT_OPCODE();
 #if !defined(ZEND_VM_SPEC) || OP1_TYPE != IS_UNUSED
@@ -471,7 +467,7 @@ in such a way, have a look at it :</p>
 <p>But remember, the generated code in <em>zend_vm_execute.h</em> is compiled by a C compiler, and this one will optimize those useless statement by just making them dissapear, resulting in each OPCode handler being highly optimized when turned to machine code by the C compiler , like this :</p>
 <pre><code>static int ZEND_FASTCALL  ZEND_INIT_ARRAY_SPEC_CONST_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 {
-    array_init(&amp;EX_T(opline-&gt;result.var).tmp_var);
+    array_init(&EX_T(opline->result.var).tmp_var);
 }</code></pre>
 <h4 id="zend-vm-executor-generation-customization">Zend VM executor generation customization<a href="#zend-vm-executor-generation-customization" class="anchor">#</a></h4>
 <p>The script that generates the VM executor is <em>zend_vm_gen.php</em>, and this one accepts parameters, that means that you can change your PHP current executor code by generating another one. For example, when you pass <em>--without-specializer</em> to this script, it generates a VM executor with no specializers. That means that each OPCode handler will have only one declination (whatever its op1 and op2 types are), and this one will effectively do a big switch() on each operand op1/op2 type when trying to fetch its value :</p>
@@ -481,9 +477,9 @@ in such a way, have a look at it :</p>
     zend_free_op free_op1, free_op2;
 
     SAVE_OPLINE();
-    fast_add_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
-        get_zval_ptr(opline-&gt;op1_type, &amp;opline-&gt;op1, execute_data, &amp;free_op1, BP_VAR_R),
-        get_zval_ptr(opline-&gt;op2_type, &amp;opline-&gt;op2, execute_data, &amp;free_op2, BP_VAR_R) TSRMLS_CC);
+    fast_add_function(&EX_T(opline->result.var).tmp_var,
+        get_zval_ptr(opline->op1_type, &opline->op1, execute_data, &free_op1, BP_VAR_R),
+        get_zval_ptr(opline->op2_type, &opline->op2, execute_data, &free_op2, BP_VAR_R) TSRMLS_CC);
     FREE_OP(free_op1);
     FREE_OP(free_op2);
     CHECK_EXCEPTION();
@@ -492,26 +488,26 @@ in such a way, have a look at it :</p>
 
 static inline zval *_get_zval_ptr(int op_type, const znode_op *node, const zend_execute_data *execute_data, zend_free_op *should_free, int type TSRMLS_DC)
 {
-/*    should_free-&gt;is_var = 0; */
+/*  should_free->is_var = 0; */
     switch (op_type) {
         case IS_CONST:
-            should_free-&gt;var = 0;
-            return node-&gt;zv;
+            should_free->var = 0;
+            return node->zv;
             break;
         case IS_TMP_VAR:
-            should_free-&gt;var = TMP_FREE(&amp;EX_T(node-&gt;var).tmp_var);
-            return &amp;EX_T(node-&gt;var).tmp_var;
+            should_free->var = TMP_FREE(&EX_T(node->var).tmp_var);
+            return &EX_T(node->var).tmp_var;
             break;
         case IS_VAR:
-            return _get_zval_ptr_var(node-&gt;var, execute_data, should_free TSRMLS_CC);
+            return _get_zval_ptr_var(node->var, execute_data, should_free TSRMLS_CC);
             break;
         case IS_UNUSED:
-            should_free-&gt;var = 0;
+            should_free->var = 0;
             return NULL;
             break;
         case IS_CV:
-            should_free-&gt;var = 0;
-            return _get_zval_ptr_cv(node-&gt;var, type TSRMLS_CC);
+            should_free->var = 0;
+            return _get_zval_ptr_cv(node->var, type TSRMLS_CC);
             break;
         EMPTY_SWITCH_DEFAULT_CASE()
     }
@@ -530,7 +526,7 @@ However, when you run some PHP code against this VM executor, it shows something
     while (1) {
         int ret;
 
-        if ((ret = execute_data-&gt;opline-&gt;handler(execute_data TSRMLS_CC)) &gt; 0) {
+        if ((ret = execute_data->opline->handler(execute_data TSRMLS_CC)) > 0) {
             switch (ret) {
                 case 1:
                     EG(in_execution) = original_in_execution;
@@ -548,7 +544,7 @@ However, when you run some PHP code against this VM executor, it shows something
     }
     zend_error_noreturn(E_ERROR, "Arrived at end of main loop which shouldn't happen");
 }</code></pre>
-<p>This is the CALL strategy, it increments a pointer in execute_data-&gt;opline at the end of each OPCode handler, and goes back to the next iteration of the while(1). This is how we go from one OPcode to the next one, until the ZEND_RETURN one.</p>
+<p>This is the CALL strategy, it increments a pointer in execute_data->opline at the end of each OPCode handler, and goes back to the next iteration of the while(1). This is how we go from one OPcode to the next one, until the ZEND_RETURN one.</p>
 <p>There exists other strategies to achieve the same goal. Why not use a C goto ? Or a giant C switch ?</p>
 <p>This is <em>--with-vm-kind</em> role : it generates 3 different executor control flow strategies. Let's see the C goto one :</p>
 <pre><code>ZEND_API void execute_ex(zend_execute_data *execute_data TSRMLS_DC)
@@ -556,12 +552,12 @@ However, when you run some PHP code against this VM executor, it shows something
     /* ... simplified ... */
 
     while (1) {
-        goto *(void**)(execute_data-&gt;opline-&gt;handler);
+        goto *(void**)(execute_data->opline->handler);
     }
 }</code></pre>
 <p>You see that the while(1) is still here, but in the while this time, we goto a function pointer. So for one OPCode handler to give hand to the next one, we will have this time to increment a pointer and use a goto as well :</p>
-<pre><code>#define ZEND_VM_INC_OPCODE() execute_data-&gt;opline++
-#define ZEND_VM_CONTINUE() goto *(void**)(OPLINE-&gt;handler) /* here is the goto */
+<pre><code>#define ZEND_VM_INC_OPCODE() execute_data->opline++
+#define ZEND_VM_CONTINUE() goto *(void**)(OPLINE->handler) /* here is the goto */
 #define ZEND_VM_NEXT_OPCODE() \
 CHECK_SYMBOL_TABLES() \
 ZEND_VM_INC_OPCODE(); \
@@ -569,8 +565,7 @@ ZEND_VM_CONTINUE()</code></pre>
 <p>CALL is the default strategy for the Zend Executor dispatch loop, because its the one that gives the more performance on an average of target platforms and C compilers. However, depending on your platform and C compiler specific feature, you may find better performance for other implementations, like the goto one, which can be written using specific assembly instructions on some CPU families.</p>
 <h4 id="executor-jumps">Executor jumps<a href="#executor-jumps" class="anchor">#</a></h4>
 <p>What happens when you use an <em>if</em> statement in PHP ? It is easy : instead of using ZEND_VM_NEXT_OPCODE() and linearly running each OPCode one after one - which prevents us from taking control over the executor path, and thus to implement ifs or loops - we just <strong>jump</strong> to a specific OPCode.</p>
-<pre><code>&lt;?php
-$a = 8;
+<pre><code>$a = 8;
 if ($a == 9) {
     echo "foo";
 } else {
@@ -580,24 +575,24 @@ if ($a == 9) {
 compiled vars:  !0 = $a
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   ASSIGN                                                   !0, 8
+   3     0  >   ASSIGN                                                   !0, 8
    5     1      IS_EQUAL                                         ~1      !0, 9
-         2    &gt; JMPZ                                                     ~1, -&gt;5
-   6     3  &gt;   ECHO                                                     'foo'
-   7     4    &gt; JMP                                                      -&gt;6
-   8     5  &gt;   ECHO                                                     'bar'
-  10     6  &gt; &gt; RETURN                                                   1</code></pre>
+         2    > JMPZ                                                     ~1, ->5
+   6     3  >   ECHO                                                     'foo'
+   7     4    > JMP                                                      ->6
+   8     5  >   ECHO                                                     'bar'
+  10     6  > > RETURN                                                   1</code></pre>
 <p>Notice those ZEND_JMP and ZEND_JMPZ OPCodes ? They just change the control flow :</p>
 <pre><code>static int ZEND_FASTCALL  ZEND_JMP_SPEC_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 {
     USE_OPLINE
-    ZEND_VM_SET_OPCODE(opline-&gt;op1.jmp_addr);
+    ZEND_VM_SET_OPCODE(opline->op1.jmp_addr);
     ZEND_VM_CONTINUE();
 }
 
 #define ZEND_VM_SET_OPCODE(new_op) \
 CHECK_SYMBOL_TABLES() \
-execute_data-&gt;opline = new_op</code></pre>
+execute_data->opline = new_op</code></pre>
 <p>ZEND_VM_SET_OPCODE tells the executor main loop not to basically increment the opline to go and run the immediately next OPCode, but instead to jump the opline to the jump address (jmp_addr) stored into operand op1 of the ZEND_JMP OPCode handler.
 This jump address value has been calculated at compile time.</p>
 <h2 id="performance-tips">Performance tips<a href="#performance-tips" class="anchor">#</a></h2>
@@ -606,9 +601,7 @@ This jump address value has been calculated at compile time.</p>
 <p>However, if you run your code into loops, with thousands of iteration, you will see a difference.</p>
 <h3 id="echo-a-concatenation">echo a concatenation<a href="#echo-a-concatenation" class="anchor">#</a></h3>
 <p>We can read so many codes like this nowadays :</p>
-<pre><code>&lt;?php
-
-$foo = 'foo';
+<pre><code>$foo = 'foo';
 $bar = 'bar';
 
 echo $foo . $bar;</code></pre>
@@ -616,17 +609,15 @@ echo $foo . $bar;</code></pre>
 <pre><code>compiled vars:  !0 = $foo, !1 = $bar
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   ASSIGN                                                   !0, 'foo'
+   3     0  >   ASSIGN                                                   !0, 'foo'
    4     1      ASSIGN                                                   !1, 'bar'
    6     2      CONCAT                                           ~2      !0, !1
          3      ECHO                                                     ~2
-   7     4    &gt; RETURN                                                   1</code></pre>
+   7     4    > RETURN                                                   1</code></pre>
 <p>Interesting enough : the engine will concat (ZEND_CONCAT) both $a and $b value into a temporary variable (~2 in the output above), to finally echo it and trash it away.</p>
 <p>That means that the engine will have to both create some space for a string into memory, and perform a complex operation : a concatenation - just to echo that and then free the memory back. That seems a little bit too much for such an operation no ?</p>
 <p>Why not turn your code to something much like this ? :</p>
-<pre><code>&lt;?php
-
-$foo = 'foo';
+<pre><code>$foo = 'foo';
 $bar = 'bar';
 
 echo $foo , $bar;
@@ -634,11 +625,11 @@ echo $foo , $bar;
 compiled vars:  !0 = $foo, !1 = $bar
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   ASSIGN                                                   !0, 'foo'
+   3     0  >   ASSIGN                                                   !0, 'foo'
    4     1      ASSIGN                                                   !1, 'bar'
    6     2      ECHO                                                     !0
          3      ECHO                                                     !1
-   7     4    &gt; RETURN                                                   1</code></pre>
+   7     4    > RETURN                                                   1</code></pre>
 <p>You see the difference ? Using a comma in echo in perfectly valid, the Zend compiler accepts as many parameters to the "echo" statement as possible (comma separated), and just generates one ZEND_ECHO OPCode for each of them. This is much lighter.</p>
 <p>There is both no need to create a temporary buffer into memory, nor to perform a concatenation.</p>
 <p>Here is a the ZEND_CONCAT OPCode detail :</p>
@@ -648,7 +639,7 @@ line     #* I O op                           fetch          ext  return  operand
     zend_free_op free_op1, free_op2;
 
     SAVE_OPLINE();
-    concat_function(&amp;EX_T(opline-&gt;result.var).tmp_var,
+    concat_function(&EX_T(opline->result.var).tmp_var,
         GET_OP1_ZVAL_PTR(BP_VAR_R),
         GET_OP2_ZVAL_PTR(BP_VAR_R) TSRMLS_CC);
     FREE_OP1();
@@ -676,47 +667,41 @@ ZVAL_STRINGL(result, buf, length, 0);</code></pre>
 <ul><li><code>define()</code> is a function call that will suffer from the overhead of a function call into the executor</li>
 <li><code>const</code> is a keyword that won't generate a function call OPCode, thus is lighter than <code>define()</code></li>
 </ul><p>Now you got it : never use <code>define()</code> to define compile-time known constants (basically, every constant you'll happen to manipulate).</p>
-<pre><code>&lt;?php
-define('FOO', 'foo');
+<pre><code>define('FOO', 'foo');
 echo FOO;
 
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   SEND_VAL                                                 'FOO'
+   3     0  >   SEND_VAL                                                 'FOO'
          1      SEND_VAL                                                 'foo'
          2      DO_FCALL                                      2          'define'
    5     3      FETCH_CONSTANT                                   ~1      'FOO'
          4      ECHO                                                     ~1
-   6     5    &gt; RETURN                                                   1</code></pre>
+   6     5    > RETURN                                                   1</code></pre>
 <p>That is awfull in term of performance.</p>
 <p>I didnt detail how function calls work into the executor in this blog post, because this is terribly complex, and would require the writting of hundreds of additional blog lines.
 However, <a href="http://jpauli.github.io/2015/01/22/on-php-funct">I already blogged on the heaviness of function calls into the engine</a>.</p>
 <p><code>define()</code> will lead to function call, that will register the constant into the engine, and then the ZEND_FETCH_CONSTANT OPCode will simply read the value.</p>
 <p>Look at the following involving <code>const</code> this time :</p>
-<pre><code>&lt;?php
-
-const FOO = 'foo';
+<pre><code>const FOO = 'foo';
 echo FOO;
 
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   DECLARE_CONST                                            'FOO', 'foo'
+   3     0  >   DECLARE_CONST                                            'FOO', 'foo'
    5     1      FETCH_CONSTANT                                   ~0      'FOO'
          2      ECHO                                                     ~0
-   6     3    &gt; RETURN                                                   1</code></pre>
+   6     3    > RETURN                                                   1</code></pre>
 <p>All the function call (for <code>define()</code>) OPCodes have disappeared, and have been replaced by a pretty lighter DECLARE_CONST</p>
 <p>There are however little glitches - which are logical, but still - about <code>const</code> and <code>define()</code> :</p>
 <ul><li><code>const</code> can't declare conditionnal constants</li>
 <li><code>const</code> (DECLARE_CONST) can't obviously use other operand types than IS_CONST</li>
 </ul><p>That means that you can't do tings like that with <code>const</code>, but you may do with <code>define()</code> :</p>
-<pre><code>&lt;?php
-
-if (foo()) {
+<pre><code>if (foo()) {
     const FOO = 'foo'; /* A compiler rule disallows that */
 }</code></pre>
 <p>Nor you may write :</p>
-<pre><code>&lt;?php
-$a = 'FOO';
+<pre><code>$a = 'FOO';
 
 const $a = 'foo';</code></pre>
 <p>If the <code>const</code> structure is more optimized in term of performance, it has some drawbacks about the dynamism of your code.</p>
@@ -724,32 +709,28 @@ const $a = 'foo';</code></pre>
 <p>No, I won't detail function calls into the engine executor, because they are very very complex to understand. But here, I will show you, without much details, things you should prevent in term of performance.</p>
 <p>Prevent calling a function which name is dynamic ( != IS_CONST). When you make a function call, the OPCodes generated by the compiler are very different weither at the time you make the call, the compiler can know the function name, and know that your function exists (or not).</p>
 <p>Have a look :</p>
-<pre><code>&lt;?php
-
-function foo() { }
+<pre><code>function foo() { }
 foo();
 
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   NOP                                                      
+   3     0  >   NOP                                                      
    5     1      DO_FCALL                                      0          'foo'
-   6     2    &gt; RETURN                                                   1</code></pre>
+   6     2    > RETURN                                                   1</code></pre>
 <p>NOP stands for "No Operation". The compiler generated it because of its long history :-). NOP is really 0 second to run, ignore it (OPCache optimizer trashes all of them).</p>
 <p>There is here just a DO_FCALL OPCode, that will call to run the function foo()'s OPCode. All right, nothing more to add.</p>
 <p>Let's now see a dynamic function call :</p>
-<pre><code>&lt;?php
-
-function foo() { }
+<pre><code>function foo() { }
 $a = 'foo';
 $a();
 
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   NOP                                                      
+   3     0  >   NOP                                                      
    6     1      ASSIGN                                                   !0, 'foo'
    7     2      INIT_FCALL_BY_NAME                                       !0
          3      DO_FCALL_BY_NAME                              0          
-   9     4    &gt; RETURN                                                   1</code></pre>
+   9     4    > RETURN                                                   1</code></pre>
 <p>Ouch. You see that there are now 2 OPCodes about the function call, instead of one, that starts smelling bad for overall performances (but let's see what those OPCode handlers do before concluding).
 What you should know, is that the extra INIT_FCALL_BY_NAME is here because the compiler, at its compile time, did not know what function you want it to call, because this time it is into a variable (dynamic function call).</p>
 <blockquote>
@@ -761,11 +742,11 @@ What you should know, is that the extra INIT_FCALL_BY_NAME is here because the c
 
     USE_OPLINE
     zval *function_name;
-    call_slot *call = EX(call_slots) + opline-&gt;result.num;
+    call_slot *call = EX(call_slots) + opline->result.num;
 
     char *function_name_strval, *lcname;
     int function_name_strlen;
-    function_name = _get_zval_ptr_cv_BP_VAR_R(execute_data, opline-&gt;op2.var TSRMLS_CC);
+    function_name = _get_zval_ptr_cv_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
 
     if (EXPECTED(Z_TYPE_P(function_name) == IS_STRING)) { /* Are we a string ? */
         function_name_strval = Z_STRVAL_P(function_name);
@@ -776,37 +757,37 @@ What you should know, is that the extra INIT_FCALL_BY_NAME is here because the c
         } else {
             lcname = zend_str_tolower_dup(function_name_strval, function_name_strlen);
         }
-        if (UNEXPECTED(zend_hash_find(EG(function_table), lcname, function_name_strlen+1, (void **) &amp;call-&gt;fbc) == FAILURE)) {
+        if (UNEXPECTED(zend_hash_find(EG(function_table), lcname, function_name_strlen+1, (void **) &call->fbc) == FAILURE)) {
             zend_error_noreturn(E_ERROR, "Call to undefined function %s()", function_name_strval);
         }
         efree(lcname);
 
-        call-&gt;object = NULL;
-        call-&gt;called_scope = NULL;
-        call-&gt;num_additional_args = 0;
-        call-&gt;is_ctor_call = 0;
+        call->object = NULL;
+        call->called_scope = NULL;
+        call->num_additional_args = 0;
+        call->is_ctor_call = 0;
         EX(call) = call;
 
         CHECK_EXCEPTION();
         ZEND_VM_NEXT_OPCODE();
-    } else if (IS_CV != IS_CONST &amp;&amp; IS_CV != IS_TMP_VAR &amp;&amp;
-        EXPECTED(Z_TYPE_P(function_name) == IS_OBJECT) &amp;&amp;    /* Are we an object (closure) ? */
+    } else if (IS_CV != IS_CONST && IS_CV != IS_TMP_VAR &&
+        EXPECTED(Z_TYPE_P(function_name) == IS_OBJECT) &&    /* Are we an object (closure) ? */
 
         /* code simplified and not showed here */
 
-    } else if (IS_CV != IS_CONST &amp;&amp;
-            EXPECTED(Z_TYPE_P(function_name) == IS_ARRAY) &amp;&amp;
+    } else if (IS_CV != IS_CONST &&
+            EXPECTED(Z_TYPE_P(function_name) == IS_ARRAY) &&
             zend_hash_num_elements(Z_ARRVAL_P(function_name)) == 2) {  /* Are we an array ? */
 
     /* code simplified and not showed here */
 
     }
-        if (UNEXPECTED(call-&gt;fbc == NULL)) {
-            zend_error_noreturn(E_ERROR, "Call to undefined method %s::%s()", ce-&gt;name, Z_STRVAL_PP(method));
+        if (UNEXPECTED(call->fbc == NULL)) {
+            zend_error_noreturn(E_ERROR, "Call to undefined method %s::%s()", ce->name, Z_STRVAL_PP(method));
         }
 
-        call-&gt;num_additional_args = 0;
-        call-&gt;is_ctor_call = 0;
+        call->num_additional_args = 0;
+        call->is_ctor_call = 0;
         EX(call) = call;
 
         CHECK_EXCEPTION();
@@ -827,32 +808,29 @@ What you should know, is that the extra INIT_FCALL_BY_NAME is here because the c
 <p>This is the icing on the cake part : classes and inheritance.</p>
 <p>Here again, simple words : When class A extends B, you'd better for performances have delcared B before, if not : that will be naughty at runtime.</p>
 <p>Let's demonstrates :</p>
-<pre><code>&lt;?php
-
-class Bar { }
+<pre><code>class Bar { }
 class Foo extends Bar { }
 
 compiled vars:  none
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   NOP                                                      
+   3     0  >   NOP                                                      
    5     1      NOP                                                      
          2      NOP                                                      
-   6     3    &gt; RETURN                                                   1</code></pre>
+   6     3    > RETURN                                                   1</code></pre>
 <p>No, there is no error : If you do things the right way, in the right order, <strong>the compiler can take care of all the heavy stuff about class declaration</strong>. You see what the executor has to run here ? NOP, and NOP, and NOP again : nothing (OPCache optimizer will even discard those super light NOPs).</p>
 <p>The compiler has done the job (and <strong>declaring a class is really a heavy task for performances</strong>), and once again, because you use an OPCode cache solution, you don't suffer from the compiler time at all.</p>
 <p>So, declaring classes in PHP is very light in term of execution, until you move the order of declarations :</p>
-<pre><code>&lt;?php
-class Foo extends Bar { }
+<pre><code>class Foo extends Bar { }
 class Bar { }
 
 compiled vars:  none
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   FETCH_CLASS                                   4  :0      'Bar'
+   3     0  >   FETCH_CLASS                                   4  :0      'Bar'
          1      DECLARE_INHERITED_CLASS                                  '%00foo%2Ftmp%2Ffoo.php0x7f198b0c401d', 'foo'
    5     2      NOP                                                      
-   6     3    &gt; RETURN                                                   1</code></pre>
+   6     3    > RETURN                                                   1</code></pre>
 <p>We declared Foo as extending Bar, but at the time the declaration is read by the compiler, this one doesn't know anything about Bar. So how could it prepare the Foo class into memory for it to be fully ready for the executor to run ? It just can't : that is exactly what a compiler is, and in less dynamic languages, this code would have lead to a "Parse error : class not found" error, end of story. But PHP is more dynamic than this.</p>
 <p>The compiler here once again has to delay the class declaration at runtime (something PHP allows), and believe me that class declaration is heavy for the engine, what is heavy is resolving the inheritence tree and add all the functions of all the parents to the actual class, something usually taking some compiler time, but not in our case : it will eat runtime, over, and over , and over again, for a class that will likely never change. What a silly code writing in a performance point of view.</p>
 <p>Here, like always, we suffer from the very dynamic nature of PHP, allowing to use an object of a class that it has even not compiled yet ! (autoloaded ?). This is flexible, this is easy to program, but your machine will pay the price of your laziness, as often. Until you use and OPCode cache, particularly OPCache, which optimizes very nicely such cases (and I still have some PR to improve even more this specific case).</p>
@@ -860,28 +838,25 @@ line     #* I O op                           fetch          ext  return  operand
 <p>Note that this process also happens for both traits binding, and interface implementations, as internally, classes/traits/interfaces are exactly the same structure and share many processes.</p>
 </blockquote>
 <p>Still not convinced ?</p>
-<pre><code>&lt;?php
-
-class Foo { }
+<pre><code>class Foo { }
 
 compiled vars:  none
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt;   NOP                                                      
-   4     1    &gt; RETURN                                                   1</code></pre>
+   3     0  >   NOP                                                      
+   4     1    > RETURN                                                   1</code></pre>
 <p>Nothing to do at runtime, like we already did demonstrate. Let's add a little bit of dynamism into that :</p>
-<pre><code>&lt;?php
-if ($a) {
+<pre><code>if ($a) {
     class Foo  { }
 }
 
 compiled vars:  !0 = $a
 line     #* I O op                           fetch          ext  return  operands
 -----------------------------------------------------------------------------------
-   3     0  &gt; &gt; JMPZ                                                     !0, -&gt;3
-   4     1  &gt;   DECLARE_CLASS                                    $0      '%00foo%2Ftmp%2Ffoo.php0x7fcef3f9701d', 'foo'
-   5     2    &gt; JMP                                                      -&gt;3
-   6     3  &gt; &gt; RETURN                                                   1</code></pre>
+   3     0  > > JMPZ                                                     !0, ->3
+   4     1  >   DECLARE_CLASS                                    $0      '%00foo%2Ftmp%2Ffoo.php0x7fcef3f9701d', 'foo'
+   5     2    > JMP                                                      ->3
+   6     3  > > RETURN                                                   1</code></pre>
 <p>You pay the price of your dynamism : the class has now to be fully declared and resolved at runtime (ZEND_DECLARE_CLASS OPCode), everytime you run the code. Naughty you !</p>
 <h2 id="conclusions">Conclusions<a href="#conclusions" class="anchor">#</a></h2>
 <p>This article demonstrated some deep hidden parts of the Zend virtual machine : the executor code. This is the part of PHP source code that makes the "real" job : it executes each single task (each OPCode) the PHP script has been translated to. <strong>This is the most performance critical part of PHP's source code, so it has been designed with perf in mind first</strong>.</p>
@@ -899,10 +874,8 @@ For exemple OPCache is a zend_extension, because it plays heavilly with the OPCo
                           <footer>
             <p class="text-center">
               &copy;
-                              <a href="http://jpauli.github.io/">
-                  Julien Pauli
-                </a>
-                            2015
+                              <a href="http://jpauli.github.io/">Julien Pauli</a>
+                            2016
               <small>
                 with help from <a href="http://carew.github.com/" target="_blank">Carew</a>
               </small>
